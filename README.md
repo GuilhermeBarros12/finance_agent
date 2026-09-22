@@ -11,7 +11,7 @@
 
 Projeto pessoal de **Guilherme**, estudante de **Gestão da Informação na Universidade Federal de Goiás — UFG**, com experiência em dados, inteligência artificial, RAG, NLP e aprendizado de máquina.
 
-O Agente de Investimentos propõe reunir informações de ações, fundos imobiliários e Tesouro Direto em uma aplicação web própria. A experiência combina consultas em linguagem natural, comparação de múltiplos ativos e relatórios em PDF, sempre preservando a origem dos dados e tornando divergências visíveis.
+O Agente de Investimentos propõe reunir informações de ações, fundos imobiliários, ETFs e Tesouro Direto em uma aplicação web própria. A experiência combina consultas em linguagem natural, comparação de múltiplos ativos e relatórios em PDF, sempre preservando a origem dos dados e tornando divergências visíveis.
 
 > **Princípio central:** nenhum dado numérico de investimento deve ser apresentado sem fonte. Concordância em um indicador não valida os demais indicadores de uma fonte.
 
@@ -98,36 +98,28 @@ Se “100% open source” for uma restrição literal também para modelos e inf
 
 ### 2.2 Ajustes em relação ao desenho inicial
 
-| Tema | Constatação ou limitação | Tratamento proposto |
+| Tema | Constatação ou limitação | Tratamento e decisão |
 | --- | --- | --- |
-| Tesouro via brapi | A documentação vigente coloca o acesso completo no plano Pro. Existe sandbox limitado. | Manter o adaptador no desenho, mas não anunciar cobertura completa gratuita. Avaliar alternativa oficial em CSV. |
-| Endpoint do Tesouro | `/api/v2/treasury` é a família de rotas, não a descrição suficiente de uma chamada. | Usar as rotas documentadas de listagem, indicadores e histórico. |
-| “API oficial do Tesouro” | A brapi é o provedor da API utilizada; não deve ser apresentada como uma API governamental. | Distinguir **provedor** de **origem primária** do dado. |
-| Llama 3.3 70B na Groq | O modelo inicialmente previsto foi descontinuado para os planos Free e Developer em **16/08/2026**. | Configurar o modelo por variável de ambiente e validar disponibilidade antes do deploy. |
+| Fonte do Tesouro | A dependência do plano Pro da brapi foi descartada. | **Decidido:** construir adaptador próprio para o CSV oficial do Tesouro Transparente, fonte primária e única, sem cross-check entre fontes para Tesouro. |
+| Modelo primário na Groq | O modelo inicialmente previsto, `llama-3.3-70b-versatile`, foi descontinuado para os planos Free e Developer em **16/08/2026**, conforme a referência desta documentação. | **Candidato definido:** usar `openai/gpt-oss-120b`, configurado em `GROQ_MODEL`. A adoção definitiva permanece sujeita aos testes de qualidade. |
 | Limites dos modelos | “30 requisições/minuto” e “1 milhão de tokens/dia” não são garantias gerais. | Consultar cotas por modelo, projeto e organização; controlar requisições e tokens. |
-| Indicadores de FIIs | A presença de campos no Fundamentus não comprova disponibilidade equivalente no StatusInvest. | Homologar cobertura e metodologia de cada campo; não simular validação. |
-| PDF em Edge Functions | O caminho proposto usa runtime JavaScript/TypeScript; bibliotecas Python não são uma dependência direta desse runtime. | Adotar `pdf-lib`, com relatório limitado e teste de consumo. Python fica restrito à coleta. |
-| Login por e-mail | O SMTP padrão do Supabase é restrito e inadequado para assumir entrega livre a usuários externos. | Priorizar OAuth para a fase de testes; e-mail/senha exige solução de envio apropriada. |
+| Indicadores de FIIs | A presença de campos no Fundamentus não comprova disponibilidade equivalente no StatusInvest. | **Decidido:** FFO yield, cap rate e vacância permanecem na v1; sem campo equivalente homologado no StatusInvest, a observação utilizável fica `single_source`, sem bloquear a entrega do campo nem forçar `verified`. |
+| PDF em Edge Functions | A execução definida usa o runtime Deno das Edge Functions. | **Decidido:** manter `pdf-lib` nativo em Deno, sem mini-backend Python. Testes de consumo e paginação continuam necessários, mas a escolha do renderizador não está pendente. |
+| Login no beta | O método de autenticação da fase de beta foi confirmado. | **Decidido:** Google OAuth via Supabase Auth como método único. E-mail/senha e outros métodos não são alternativas de login no beta hospedado. |
 
-Fontes: [Tesouro na brapi][brapi-treasury], [planos da brapi][brapi-pricing], [descontinuações da Groq][groq-deprecations], [cotas da Groq][groq-limits], [cotas do Gemini][gemini-limits], [limites das Edge Functions][supabase-edge-limits], [PDF-LIB][pdf-lib] e [SMTP do Supabase][supabase-smtp].
+Fontes: [CSV oficial do Tesouro Transparente][tesouro-csv], [descontinuações da Groq][groq-deprecations], [cotas da Groq][groq-limits], [cotas do Gemini][gemini-limits], [limites das Edge Functions][supabase-edge-limits], [PDF-LIB][pdf-lib] e [login Google no Supabase][supabase-google].
 
-### 2.3 Decisão pendente: Tesouro completo com custo zero
+As decisões de arquitetura e escopo não comprovam implementação. Os recursos continuam planejados até cumprir os respectivos critérios de aceite; o modelo Groq ainda precisa concluir a avaliação de qualidade.
 
-Há uma incompatibilidade entre **Tesouro completo pela brapi** e **uso exclusivo do plano gratuito**, conforme a oferta consultada.
+### 2.3 Decisão definida: Tesouro via CSV oficial
 
-Os caminhos possíveis são:
+**Decidido:** construir um adaptador próprio para o [CSV oficial de preços e taxas do Tesouro Transparente][tesouro-csv]. O Tesouro Transparente é a **fonte primária e única** dos dados de Tesouro Direto. A brapi não participa da aquisição nem da validação dessa classe, e não há dependência de seu plano Pro.
 
-| Caminho | Cobertura | Compatibilidade com custo zero |
-| --- | --- | --- |
-| brapi sandbox | Apenas os títulos disponibilizados pelo sandbox | Adequado para desenvolvimento; não equivale à cobertura completa. |
-| brapi Pro | Cobertura conforme contrato | Viola a restrição atual de não contratar serviços. |
-| Dados abertos do Tesouro Transparente | Preços e taxas publicados pelo próprio Tesouro em arquivo estruturado | Alternativa sem scraping de HTML, mas requer novo adaptador e homologação. |
+O adaptador `treasury_official.py` deverá integrar o coletor Python e mapear títulos, datas, preços, taxas e metadados para os contratos do projeto. A lista de títulos e o histórico publicados devem refletir a cobertura efetiva do arquivo oficial, homologada antes da liberação.
 
-O [Tesouro Transparente disponibiliza um CSV oficial de preços e taxas][tesouro-csv]. Adotá-lo **não deve acontecer como substituição silenciosa**: exige registrar a decisão, mapear títulos e datas e manter a política de validação.
+**Cross-check:** não é exigido para Tesouro. Uma observação utilizável proveniente do CSV é apresentada como `single_source`, com identificação da fonte oficial e aviso de que não houve verificação entre fontes. Isso não dispensa normalização, validação de contrato, proveniência e controle de atualização, nem autoriza atribuir `verified`.
 
-Consultar brapi e o CSV pode detectar falhas de integração, mas ambas as rotas podem compartilhar a mesma origem primária. Isso é **corroboração entre canais**, não prova de independência econômica das fontes.
-
-**Estado inicial recomendado:** Tesouro desabilitado para cobertura completa, habilitável em modo de demonstração ou após resolver essa decisão. O requisito continua no escopo; não é considerado entregue enquanto estiver bloqueado.
+**Estado inicial recomendado:** Tesouro previsto como habilitado desde a v1, com `treasury.enabled: true` e `treasury.mode: official_csv`. A disponibilidade efetiva depende da implementação e homologação do novo adaptador e da publicação de um snapshot utilizável; a decisão de fonte não está mais pendente. Não há modo brapi sandbox no desenho adotado.
 
 ---
 
@@ -138,19 +130,19 @@ Consultar brapi e o CSV pode detectar falhas de integração, mas ambas as rotas
 
 | Funcionalidade | Versão | Estado | Critério de conclusão |
 | --- | --- | --- | --- |
-| Login multiusuário | v1 | Planejado | Usuário autenticado e autorizado acessa somente seus dados. |
+| Login multiusuário | v1 | Planejado | Google OAuth como login único no beta; usuário autenticado e autorizado acessa somente seus dados. |
 | Conversas e mensagens persistentes | v1 | Planejado | Recarregar, sair e entrar novamente não apaga o histórico. |
 | Cotação de ações via brapi | v1 | Planejado | Dado armazenado no lote diário com fonte e data de mercado. |
+| Cotações de ETFs | v1 | Planejado | Cotação via brapi no lote diário, com fonte, data-base e estado de validação, sob os mesmos critérios de qualidade dos demais ativos. |
 | P/VP, DY, P/L e ROE de ações | v1 | Planejado | Extração e comparação individual com segunda fonte equivalente. |
 | DY e P/VP de FIIs | v1 | Planejado | Mesmos critérios de proveniência e comparação. |
-| FFO yield, cap rate e vacância de FIIs | v1 | Condicionado | Cobertura e metodologia homologadas campo a campo. |
-| Lista, taxas e histórico de Tesouro | v1 | Condicionado | Fonte acessível, modelo de dados homologado e cobertura explícita. |
+| FFO yield, cap rate e vacância de FIIs | v1 | Planejado | Cobertura e metodologia registradas campo a campo; sem equivalente homologado no StatusInvest, publicar observação utilizável como `single_source`, sem bloquear o campo nem atribuir `verified`. |
+| Lista, taxas e histórico de Tesouro | v1 | Planejado | Adaptador próprio do CSV oficial implementado e homologado, cobertura explícita e proveniência por campo; sem exigência de cross-check. |
 | Coleta global diária | v1 | Planejado | Um workflow atualiza o universo configurado, sem coleta no chat. |
 | Alertas de divergência na interface | v1 | Planejado | Valores, fontes, diferença e tolerância exibidos. |
 | URL de consulta manual por ativo | v1 | Planejado | Link válido de referência, separado das evidências dos indicadores. |
 | Relatório multiativo | v1 | Planejado | Um snapshot consistente, com limitações e fontes. |
 | PDF persistido e reutilizável | v1 | Planejado | Arquivo privado armazenado e disponível sem regeneração. |
-| Cotações de ETFs | Stretch goal | Condicionado | Somente se não aumentar materialmente a complexidade. |
 | Histórico de indicadores fundamentalistas | Futuro | Backlog | Não confundir com histórico de taxas/preços do Tesouro. |
 | Download, indexação e resumo de RIs | Futuro | Backlog | Respostas com documento, página, trecho e versão. |
 | Alertas proativos por e-mail ou push | Futuro | Backlog | Não confundir com avisos apresentados em uma consulta. |
@@ -172,18 +164,18 @@ flowchart TB
         collect["Coletor Python"]
         fund["Fundamentus: tabelas de ações e FIIs"]
         status["StatusInvest: segunda fonte"]
-        brapi["brapi: cotações e Tesouro condicionado"]
-        official["Tesouro Transparente: alternativa a homologar"]
+        brapi["brapi: cotações de ações e ETFs"]
+        official["Tesouro Transparente: CSV oficial, fonte única"]
         validate["Normalização + validação por campo"]
         gha --> collect
         collect --> fund
         collect --> status
         collect --> brapi
-        collect -.-> official
+        collect --> official
         fund --> validate
         status --> validate
         brapi --> validate
-        official -.-> validate
+        official --> validate
     end
 
     subgraph hosted["Persistência e backend hospedados"]
@@ -191,7 +183,7 @@ flowchart TB
         db["Postgres: snapshots, evidências, histórico e RLS"]
         edge["Edge Functions: autenticação e lógica determinística"]
         storage["Storage privado: PDFs"]
-        groq["Groq: modelo configurável"]
+        groq["Groq: openai/gpt-oss-120b em avaliação"]
         gemini["Gemini: fallback autorizado"]
         validate -->|"publicação transacional"| db
         edge -->|"cliente com JWT do usuário"| db
@@ -215,7 +207,7 @@ flowchart TB
 
 ### 4.2 Separação de responsabilidades
 
-**Coleta:** acessa fontes externas, extrai registros, normaliza valores, executa comparação e publica um snapshot. Não recebe perguntas de usuários, não chama LLM e não gera PDFs.
+**Coleta:** acessa fontes externas, extrai registros, normaliza valores, valida contratos, executa comparação quando aplicável e publica um snapshot. Não recebe perguntas de usuários, não chama LLM e não gera PDFs.
 
 **Persistência:** guarda dados de mercado compartilhados, evidências, resultados de validação e dados privados por conta. O snapshot persistido é o cache remoto oficial da aplicação.
 
@@ -268,25 +260,25 @@ As escolhas abaixo definem uma implementação de referência, não uma lista de
 | Precisão | [decimal](https://docs.python.org/3/library/decimal.html) | Cálculo decimal de diferenças e indicadores derivados. |
 | Agendamento | [GitHub Actions][github-schedule] | Execução diária e manual em runner hospedado. |
 | Banco | [PostgreSQL](https://www.postgresql.org/) no [Supabase](https://supabase.com/docs) | Dados de mercado, conversas, mensagens e metadados. |
-| Identidade | [Supabase Auth](https://supabase.com/docs/guides/auth) | Login e identidade da conta. |
+| Identidade | [Supabase Auth](https://supabase.com/docs/guides/auth) | Google OAuth como login único do beta e identidade da conta. |
 | Autorização | [RLS][supabase-rls] | Isolamento no banco, além das verificações do backend. |
 | Arquivos | [Supabase Storage][supabase-storage] | PDFs privados e evidências quando permitido. |
 | Sincronização | [Supabase Realtime](https://supabase.com/docs/guides/realtime) | Opcional: atualização da interface; não substitui persistência. |
 | Backend | [Supabase Edge Functions][supabase-edge-auth] | Endpoints em TypeScript e execução sob demanda. |
 | Runtime | [Deno](https://deno.com/) | Runtime da implementação TypeScript das funções. |
-| LLM primário | [Groq](https://console.groq.com/docs) | Modelo disponível na conta, configurado por ambiente. |
+| LLM primário | [Groq](https://console.groq.com/docs) | `openai/gpt-oss-120b` como candidato definido, configurado por ambiente e ainda em avaliação de qualidade. |
 | LLM alternativo | [Gemini API](https://ai.google.dev/gemini-api/docs) | Fallback condicionado a disponibilidade e política de dados. |
 | Frontend | [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vite.dev/) | Aplicação própria e build estático. |
 | SDK | [supabase-js](https://supabase.com/docs/reference/javascript/introduction) | Auth, banco, Storage e chamadas às funções. |
 | Contratos TypeScript | [Zod](https://zod.dev/) | Validação de entrada e de respostas dos modelos. |
-| PDF | [PDF-LIB][pdf-lib] | Geração de arquivo a partir de modelo estruturado. |
+| PDF | [PDF-LIB][pdf-lib] | Escolha decidida: geração nativa no runtime Deno das Edge Functions, a partir de modelo estruturado. |
 | Hospedagem principal | [Cloudflare Pages][cloudflare-limits] | Distribuição do frontend estático. |
 | Hospedagem alternativa | [Vercel Hobby][vercel-hobby] | Alternativa para uso pessoal não comercial. |
 | Testes | [pytest](https://docs.pytest.org/), [Vitest](https://vitest.dev/), [Playwright](https://playwright.dev/), [pgTAP](https://pgtap.org/) | Testes de coletores, frontend, jornadas e políticas SQL. |
 
 **Não previstos na v1:** LangChain, LangGraph, CrewAI, Redis, banco vetorial, worker permanente, Kubernetes e servidor Python dedicado à API.
 
-**PDF:** WeasyPrint e ReportLab permanecem alternativas para um futuro backend Python. Não instalar essas bibliotecas no coletor esperando que se tornem executáveis nas Edge Functions. `pdf-lib` atende ao desenho JavaScript sem dependências nativas, mas a viabilidade do template depende de testes de carga e paginação. [Referência][pdf-lib].
+**PDF — decisão fechada:** manter `pdf-lib`, executado nativamente no runtime Deno das Edge Functions. A alternativa de mini-backend Python foi descartada; WeasyPrint e ReportLab não compõem essa solução. Python permanece restrito à coleta. Os testes de carga e paginação continuam necessários para ajustar o template e os limites do relatório, não para reabrir a escolha da biblioteca. [Referência][pdf-lib].
 
 ---
 
@@ -300,28 +292,28 @@ As escolhas abaixo definem uma implementação de referência, não uma lista de
 | Ações: cotação | brapi | Cotação equivalente em Fundamentus e/ou StatusInvest | Mesma sessão, moeda e instante de referência compatível. |
 | Ações: P/VP, DY, P/L, ROE | Fundamentus | StatusInvest | Mesma fórmula, janela e tratamento contábil. |
 | FIIs: DY e P/VP | Fundamentus | StatusInvest | Não misturar DY mensal, anualizado e acumulado. |
-| FIIs: FFO yield e cap rate | Fundamentus | StatusInvest, se o campo equivalente for confirmado | Sem segunda fonte comparável, o requisito não está concluído. |
-| FIIs: vacância | Fundamentus | StatusInvest, se houver medida agregada equivalente | Vacância física, financeira e média por imóvel não são intercambiáveis. |
-| Tesouro: títulos, taxas e histórico | brapi, conforme acesso | Fonte oficial estruturada, a homologar | Cobertura completa gratuita não confirmada pela stack inicial. |
-| ETFs: cotação | brapi | Segunda cotação comparável, se disponível | Não aplicar automaticamente o conjunto de indicadores de ações. |
+| FIIs: FFO yield e cap rate | Fundamentus | StatusInvest, quando houver campo equivalente homologado | Sem equivalente homologado, observação utilizável em `single_source`; não bloqueia a entrega do campo nem autoriza `verified`. |
+| FIIs: vacância | Fundamentus | StatusInvest, quando houver medida agregada equivalente homologada | Sem equivalente homologado, observação utilizável em `single_source`; vacância física, financeira e média por imóvel não são intercambiáveis. |
+| Tesouro: títulos, taxas e histórico | CSV oficial do Tesouro Transparente, via adaptador próprio | Não exigida: fonte primária e única | Disponível na v1 após implementar e homologar o adaptador; observações utilizáveis em `single_source`, com cobertura explícita. |
+| ETFs: cotação | brapi | Segunda cotação comparável, se disponível | Escopo funcional da v1, com os mesmos critérios de proveniência e validação por campo; não aplicar automaticamente o conjunto de indicadores de ações. |
 
 As [tabelas de ações][fundamentus-stocks] e de [FIIs do Fundamentus][fundamentus-fiis] são os pontos de entrada previstos. A tabela de FIIs expõe rótulos como FFO Yield, Cap Rate e Vacância Média. A [página de referência do StatusInvest][statusinvest-fii] deve ser inspecionada por campo; a presença de informações por imóvel, por exemplo, não comprova equivalência com uma média agregada.
 
-### 6.2 Rotas da brapi
+### 6.2 Cotações via brapi e Tesouro via CSV oficial
 
-Para uma integração nova de cotações, adotar o contrato v2 e manter eventual suporte ao legado apenas dentro do adaptador:
+Para uma integração nova de cotações de ações e ETFs, adotar o contrato v2 e manter eventual suporte ao legado apenas dentro do adaptador:
 
 ```text
 GET https://brapi.dev/api/v2/stocks/quote?symbols=PETR4
-
-GET https://brapi.dev/api/v2/treasury/list
-GET https://brapi.dev/api/v2/treasury/indicators?symbols=<symbol>
-GET https://brapi.dev/api/v2/treasury/indicators/history?symbols=<symbol>
 ```
 
-Os parâmetros aceitos, a paginação, a janela histórica e os nomes dos campos devem seguir os contratos oficiais de [cotações][brapi-quote] e [Tesouro][brapi-treasury]. Não reutilizar automaticamente o parser de uma rota em outra.
+Os parâmetros aceitos e os nomes dos campos devem seguir o contrato oficial de [cotações][brapi-quote]. A brapi é usada para cotações, não para aquisição de Tesouro.
 
-Para Tesouro, preservar tipo de título, indexador, vencimento, modalidade de cupom, taxa, unidade e informação de interpretação da taxa. Um spread sobre Selic não deve ser renderizado como se fosse uma taxa prefixada nominal. [Referência][brapi-treasury].
+Para Tesouro, usar exclusivamente o [CSV oficial de preços e taxas do Tesouro Transparente][tesouro-csv], processado por `treasury_official.py`. Não implementar chamadas às rotas de Tesouro da brapi nem utilizar seu sandbox como fallback.
+
+O adaptador deve homologar o formato do arquivo e mapear seus registros para o cadastro de títulos, as observações e o histórico. Preservar tipo de título, indexador, vencimento, modalidade de cupom, lado de compra ou venda, taxa, preço, unidade e data-base, conforme a informação disponível e o mapeamento homologado. Metadados ausentes não devem ser inventados.
+
+Um spread sobre Selic não deve ser renderizado como se fosse uma taxa prefixada nominal. A interpretação da taxa deve permanecer explícita no contrato normalizado. Conforme a decisão específica de Tesouro, não há exigência de cross-check entre fontes; as validações de contrato e proveniência continuam obrigatórias.
 
 ### 6.3 O significado de “uma coleta por dia”
 
@@ -332,7 +324,7 @@ Lote diário
   -> enumera o universo homologado
   -> coleta cada fonte
   -> normaliza as observações
-  -> compara cada campo
+  -> valida cada campo e compara fontes quando aplicável
   -> publica um snapshot
   -> todas as consultas usam esse snapshot
 ```
@@ -553,7 +545,13 @@ assert not within_tolerance(
 
 A condição de atualização é independente: um campo pode estar `verified` entre fontes e, ainda assim, `stale`.
 
-**Fonte única não cumpre cross-validation.** A aplicação pode mostrar esse dado em área explicitamente não verificada, mas não tratá-lo como validado, usá-lo silenciosamente em conclusões nem marcar o requisito como entregue.
+**Fonte única não cumpre cross-validation.** A aplicação pode mostrar esse dado como `single_source`, com a fonte e o aviso de não verificado entre fontes, mas não tratá-lo como `verified` nem usá-lo silenciosamente em conclusões.
+
+**Critérios de entrega definidos para a v1:** FFO yield, cap rate e vacância de FIIs podem cumprir o requisito funcional com uma observação utilizável do Fundamentus em `single_source` quando não houver campo equivalente homologado no StatusInvest. Tesouro também pode cumprir seu requisito funcional em `single_source`, pois o CSV oficial do Tesouro Transparente foi definido como fonte primária e única, sem exigência de cross-check. Em ambos os casos, a aceitação funcional não significa que houve validação entre fontes.
+
+Para os três indicadores de FIIs, um campo do StatusInvest que não seja equivalente homologado não entra como segunda observação utilizável da mesma métrica; a ausência de equivalência deve ficar registrada. Se existir um campo equivalente homologado, mas as observações não forem comparáveis por janela, metodologia ou data, aplicar `incomparable`; não ocultar a incompatibilidade com `single_source`.
+
+Essas decisões não dispensam evidência, atualização, normalização e validação de contrato. Não converter ausência ou erro em `single_source`: sem observação utilizável, manter `missing` ou `invalid`, conforme o caso. Para os demais requisitos que exigem comparação, fonte única continua sem cumprir o critério de cross-validation.
 
 Com três fontes, armazenar os resultados par a par. Concordância entre duas não autoriza ocultar a terceira; o campo mantém o alerta de conflito quando existir uma comparação válida divergente.
 
@@ -833,9 +831,9 @@ Para perguntas simples ou indisponibilidade de modelo, a aplicação pode respon
 
 ### 9.2 Modelos configuráveis
 
-O desenho original previa `llama-3.3-70b-versatile` na Groq. Esse identificador não deve ser tratado como default funcional no plano gratuito após sua descontinuação.
+**Candidato primário definido:** usar `openai/gpt-oss-120b` na Groq, em substituição ao `llama-3.3-70b-versatile` previsto no desenho original e registrado como descontinuado nesta documentação. O modelo antigo não deve permanecer como default nem como fallback implícito.
 
-Definir `GROQ_MODEL` e `GEMINI_MODEL` explicitamente. Como candidato para avaliação, a documentação da Groq lista `openai/gpt-oss-120b` nas cotas gratuitas e como alternativa ao modelo descontinuado. A decisão final exige teste de qualidade em português, estrutura de saída, latência e consumo. [Referências][groq-deprecations] e [cotas][groq-limits].
+Definir `GROQ_MODEL=openai/gpt-oss-120b` e configurar `GEMINI_MODEL` explicitamente quando o fallback estiver habilitado. A escolha do candidato está fechada, mas a **adoção definitiva ainda depende dos testes de qualidade em português, estrutura de saída, latência e consumo**. A disponibilidade e as cotas efetivas devem ser verificadas antes do deploy. [Referências][groq-deprecations] e [cotas][groq-limits].
 
 Para Gemini, escolher um modelo textual da família Flash disponível no projeto e na faixa gratuita. Não assumir que qualquer versão com “Flash” no nome tem as mesmas cotas. [Preços][gemini-pricing] e [limites][gemini-limits].
 
@@ -951,7 +949,7 @@ Reabrir um relatório já pronto não chama fontes, LLM ou renderizador. Solicit
 
 ### 10.3 Compatibilidade do renderizador
 
-`pdf-lib` permite geração em JavaScript, inclusive Deno. A biblioteca não transforma automaticamente HTML/CSS em um documento paginado: a aplicação precisa implementar quebra de linhas, paginação, tabelas e referências. [Documentação][pdf-lib].
+**Renderizador decidido:** `pdf-lib`, executado nativamente no runtime Deno das Edge Functions, sem mini-backend Python. A biblioteca não transforma automaticamente HTML/CSS em um documento paginado: a aplicação precisa implementar quebra de linhas, paginação, tabelas e referências. [Documentação][pdf-lib].
 
 Usar texto selecionável, fontes com licença compatível, acentuação testada e links identificáveis. Evitar emojis e glifos sem suporte na fonte escolhida. O PDF não deve ser uma captura de tela da interface.
 
@@ -1022,7 +1020,7 @@ agente-investimentos/
 |   |   |   |-- fundamentus.py
 |   |   |   |-- statusinvest.py
 |   |   |   |-- brapi.py
-|   |   |   `-- treasury_official.py  # Condicionado à decisão de fonte
+|   |   |   `-- treasury_official.py  # Adaptador próprio do CSV oficial; previsto na v1
 |   |   |-- normalization/
 |   |   |-- validation/
 |   |   |-- persistence/
@@ -1137,7 +1135,7 @@ SCRAPER_CONTACT=
 | `APP_ENV` | Ambiente validado: desenvolvimento, testes hospedados ou produção. |
 | `SUPABASE_URL` | Endpoint do projeto correspondente ao ambiente. |
 | `SUPABASE_SECRET_KEY` | Credencial administrativa de ingestão; nunca enviada ao frontend. |
-| `BRAPI_TOKEN` | Autenticação da brapi. |
+| `BRAPI_TOKEN` | Autenticação da brapi para cotações de ações e ETFs; não é utilizado pelo adaptador de Tesouro. |
 | `SCRAPER_CONTACT` | Contato técnico usado na identificação do coletor, quando aplicável. |
 
 Em projetos legados, a chave `service_role` pode ser mapeada pelo adaptador como credencial administrativa. Não confundir esse valor com a chave pública `anon`.
@@ -1150,7 +1148,7 @@ A credencial administrativa de ingestão é sensível porque pode contornar RLS.
 APP_ENV=
 APP_ORIGINS=
 GROQ_API_KEY=
-GROQ_MODEL=
+GROQ_MODEL=openai/gpt-oss-120b
 GEMINI_API_KEY=
 GEMINI_MODEL=
 ENABLE_GEMINI_FALLBACK=
@@ -1160,7 +1158,7 @@ MOCK_LLM=
 | Variável | Uso |
 | --- | --- |
 | `APP_ORIGINS` | Origens permitidas, separadas por vírgula; correspondência exata. |
-| `GROQ_API_KEY`, `GROQ_MODEL` | Credencial e modelo primário. |
+| `GROQ_API_KEY`, `GROQ_MODEL` | Credencial e modelo primário; candidato definido: `openai/gpt-oss-120b`, ainda sujeito à avaliação de qualidade. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Credencial e modelo alternativo, quando habilitado. |
 | `ENABLE_GEMINI_FALLBACK` | Habilitação explícita, adicional às regras de privacidade. |
 | `MOCK_LLM` | Respostas simuladas somente em desenvolvimento/testes locais. |
@@ -1187,7 +1185,7 @@ São valores públicos de configuração. Uma chave pública do Supabase não é
 | --- | --- |
 | Terminal/CI de deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` e, quando exigido pela operação, `SUPABASE_DB_PASSWORD`. |
 | GitHub Actions de coleta | Segredos `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BRAPI_TOKEN`; variável `SCRAPER_CONTACT`. |
-| Supabase Auth | Client ID e Client Secret do provedor OAuth, configurados no painel de Auth. |
+| Supabase Auth | Client ID e Client Secret do Google OAuth, único provedor de login do beta, configurados no painel de Auth. |
 | Hospedagem do frontend | Somente as variáveis públicas `VITE_*`. |
 
 Não enviar credenciais de deploy ao coletor se ele não as utiliza. Não fornecer chaves de LLM ao workflow de scraping.
@@ -1222,13 +1220,17 @@ stocks:
 fiis:
   - HGLG11
   - KNRI11
-etfs: []
+etfs: []  # Preencher com ETFs homologados antes de liberar a v1.
 treasury:
-  enabled: false
-  mode: sandbox
+  enabled: true
+  mode: official_csv
 ```
 
 Os símbolos são exemplos de configuração, não uma recomendação de investimento.
+
+A lista vazia de `etfs` é apenas um placeholder de cadastro: os ETFs fazem parte do escopo funcional da v1 e o universo homologado deve ser preenchido antes da liberação. Não foi definida nesta revisão uma lista de tickers de ETFs.
+
+O modo `official_csv` é o contrato de configuração proposto para selecionar o adaptador do Tesouro Transparente. `enabled: true` registra a decisão de incluir Tesouro na v1; não comprova que o adaptador esteja implementado ou que já exista um snapshot utilizável.
 
 ### 12.7 `.gitignore` mínimo
 
@@ -1338,7 +1340,7 @@ on conflict (user_id) do update set enabled = excluded.enabled;
 
 Repetir para a segunda conta. A aplicação não oferece ao usuário uma operação para autorizar a si próprio.
 
-Para desenvolvimento local, e-mail/senha pode ser usado com o serviço de e-mail de teste do ambiente. Esse comportamento não deve ser confundido com a entrega de e-mail no Supabase hospedado.
+Exclusivamente para desenvolvimento local, e-mail/senha pode ser usado com o serviço de e-mail de teste do ambiente. Essa facilidade para contas fictícias não é uma alternativa de autenticação no beta hospedado, cujo único método de login é Google OAuth.
 
 ### 13.6 Validar configuração e carregar dados sintéticos
 
@@ -1732,7 +1734,9 @@ A implantação deve interromper em caso de migrations faltantes, divergência d
 
 ### 16.2 Configurar OAuth
 
-Para o beta, a referência é login com Google via Supabase Auth:
+**Decisão confirmada:** Google OAuth via Supabase Auth é o **único método de login do beta hospedado**. E-mail/senha, magic link e outros provedores não são alternativas nesta fase; manter esses métodos desabilitados nesse ambiente.
+
+Configuração:
 
 1. Criar/configurar a aplicação OAuth no provedor, com apenas os escopos de identidade necessários.
 2. Cadastrar o callback do Supabase no provedor OAuth.
@@ -1745,7 +1749,7 @@ O callback do provedor para o Supabase e a URL de retorno do Supabase para o fro
 
 Não dar aos usuários de teste acesso administrativo ao projeto Supabase apenas para permitir recebimento de e-mails.
 
-E-mail/senha, magic link e recuperação por e-mail precisam de uma estratégia de SMTP adequada. O serviço padrão tem limitações de destinatários e frequência; OAuth evita depender desses e-mails para o login inicial. [Referência][supabase-smtp].
+A adoção de login por e-mail ou recuperação de senha própria da aplicação fica fora do beta e exigiria uma nova decisão, além de estratégia de SMTP adequada. As limitações do serviço padrão não devem ser contornadas habilitando e-mail/senha como alternativa nesta fase. [Referência][supabase-smtp].
 
 ### 16.3 Publicar funções e segredos
 
@@ -1800,7 +1804,7 @@ Não publicar uma primeira tela vazia como se os dados estivessem atualizados: a
 
 ### 16.6 Verificação de entrada em operação
 
-A liberação do beta requer login externo real, isolamento entre duas contas, consulta com fontes, recarregamento de histórico, PDF privado reutilizável, tratamento de quota e mensagem de indisponibilidade.
+A liberação do beta requer login externo real exclusivamente com Google OAuth, isolamento entre duas contas, consulta com fontes, recarregamento de histórico, PDF privado reutilizável, tratamento de quota e mensagem de indisponibilidade.
 
 Um frontend online, sozinho, não significa que a aplicação está pronta para usuários.
 
@@ -1817,7 +1821,7 @@ Um frontend online, sozinho, não significa que a aplicação está pronta para 
 | Supabase inatividade | Projetos gratuitos podem pausar após uma semana de inatividade. | Informar indisponibilidade e restaurar pelo painel; não prometer disponibilidade contínua. |
 | Edge Functions | Memória de 256 MB, duração de até 150 segundos no Free e orçamento de CPU de 2 segundos por requisição. | Limitar contexto e PDF, reduzir trabalho de CPU e tratar timeout. |
 | GitHub Actions | Runners padrão em repositórios públicos têm uso gratuito; GitHub Free em privados inclui 2.000 minutos mensais e 500 MB de artefatos. | Evitar artefatos grandes, medir duração do lote e interromper novas execuções ao atingir o orçamento. |
-| brapi Free | 15.000 requisições mensais e um ativo por chamada, conforme plano consultado. Tesouro completo não integra essa cobertura gratuita. | Limitar universo, preservar cache e parar retries quando a cota terminar. |
+| brapi Free | 15.000 requisições mensais e um ativo por chamada, conforme plano consultado. Utilizada para cotações de ações e ETFs; Tesouro usa o CSV oficial e não depende dessa cobertura. | Limitar universo, preservar cache e parar retries quando a cota terminar. |
 | Groq | Cotas variam por modelo e organização. A tabela consultada para `openai/gpt-oss-120b` informa 30 RPM, 1.000 RPD, 8.000 TPM e 200.000 TPD. | Aplicar limite global e por usuário, reduzir contexto e usar fallback autorizado ou resposta determinística. |
 | Gemini | Cotas dependem do modelo, projeto e faixa; não assumir “1 milhão de tokens/dia”. | Consultar AI Studio, controlar tokens e não habilitar billing automaticamente. |
 | Cloudflare Pages | Free com 500 builds mensais, um build simultâneo e limite de 20 mil arquivos por site. | Evitar deploy por alteração de dados; o lote não deve reconstruir o frontend. |
@@ -1953,15 +1957,18 @@ Publicar `SECURITY.md` com um canal privado real antes de abrir o projeto. Até 
 
 | Área | Casos mínimos |
 | --- | --- |
-| Parsing | HTML esperado, tabela ausente, mudança de coluna, encoding, campo vazio e resposta de bloqueio. |
+| Parsing | HTML e CSV esperados, tabela ou coluna ausente, mudança de estrutura, encoding, campo vazio e resposta de bloqueio. |
 | Normalização | Formato brasileiro, percentuais em escalas diferentes, negativos, zero legítimo, nulos e números não finitos. |
-| Comparação | Limite exato, tolerância relativa, proximidade de zero, três fontes em conflito e metodologia desconhecida. |
+| Comparação | Limite exato, tolerância relativa, proximidade de zero, três fontes em conflito, metodologia desconhecida e distinção entre `single_source` e `incomparable` nos indicadores de FIIs. |
 | Proveniência | Campo sem URL, URL com token, evidência inexistente e cálculo sem entradas rastreáveis. |
 | Coleta | Falha parcial, base vazia, timeout, `429`, retry limitado e publicação atômica. |
+| Tesouro | Mapeamento de títulos, datas, preços, taxas e histórico do CSV oficial; fonte única, sem chamadas à brapi nem atribuição automática de `verified`. |
+| ETFs | Cotação via brapi, cadastro de classe, universo homologado, proveniência e estado de validação no snapshot da v1. |
+| Autenticação do beta | Login exclusivamente via Google OAuth, métodos alternativos desabilitados e autorização por `beta_users`; e-mail/senha restrito aos testes locais. |
 | RLS | Anônimo, usuário autorizado, usuário desabilitado, contas diferentes e tentativa de reassociar proprietário. |
 | Agente | Citação inventada, número não sustentado, prompt injection, recusa e fallback não autorizado. |
 | Histórico | Reload, logout/login, duas abas, mensagem repetida e recuperação após timeout. |
-| PDF | Acentuação, texto longo, paginação, referências, divergências e reuso sem renderização. |
+| PDF | Execução de `pdf-lib` no runtime Deno das Edge Functions, acentuação, texto longo, paginação, referências, divergências e reuso sem renderização. |
 | Storage | Leitura de outro usuário, upload direto indevido, URL expirada e objeto órfão. |
 | Consumo | Concorrência, reserva atômica, teto de tokens e esgotamento global de provedor. |
 
@@ -2000,9 +2007,14 @@ Testes de fontes reais devem ser separados, opt-in e de baixa frequência. A CI 
 - [ ] Toda consulta numérica identifica fonte, data-base e estado de verificação.
 - [ ] Nenhum campo recebe validação por herdar a confiança de outro campo.
 - [ ] Divergências não são ocultadas, promediadas nem resolvidas pelo LLM.
-- [ ] A cobertura equivalente dos campos obrigatórios foi homologada, inclusive FIIs.
+- [ ] Nos campos que exigem comparação, a cobertura equivalente e a metodologia das fontes foram homologadas.
+- [ ] FFO yield, cap rate e vacância de FIIs são disponibilizados em `single_source` quando há observação utilizável, mas não há equivalente homologado no StatusInvest, sem bloqueio por falta de segunda fonte.
+- [ ] Havendo campo equivalente homologado com observações incompatíveis, o estado `incomparable` permanece visível; ausência ou erro não é convertido em `single_source`.
 - [ ] Fonte única e dado incomparável não aparecem como `verified`.
-- [ ] A decisão de Tesouro está resolvida; cobertura e custo correspondem ao que é anunciado.
+- [ ] O adaptador próprio do CSV oficial do Tesouro Transparente está implementado e homologado, sem dependência da brapi ou exigência de cross-check; cobertura e custo correspondem ao que é anunciado.
+- [ ] Cotações de ETFs integram o universo homologado, o lote diário e as consultas da v1, com fonte, data-base e estado de validação.
+- [ ] O beta hospedado aceita somente Google OAuth como login; métodos alternativos não estão habilitados.
+- [ ] O candidato `openai/gpt-oss-120b` foi avaliado em português, estrutura de saída, latência e consumo antes de sua adoção definitiva.
 - [ ] Não há scraping nem consulta de mercado sob demanda do chat.
 - [ ] Falha da coleta mantém o último snapshot sem falsificar a atualização.
 - [ ] Histórico sobrevive a recarregamento e nova sessão.
@@ -2056,11 +2068,12 @@ O aviso operacional dentro da aplicação faz parte da v1. Envio proativo de pus
 | Fonte retorna `200`, mas nenhum registro | Verificar tabela, seletor, encoding e página de erro disfarçada; impedir promoção de snapshot vazio. |
 | Muitos indicadores ficaram `incomparable` | Conferir metadata de período e metodologia; não relaxar a validação para obter mais campos verdes. |
 | Datas não coincidem | Preservar instantes originais; não reescrever data da fonte com a data da coleta. |
-| brapi retorna `401`/`403` | Verificar credencial e acesso ao endpoint contratado; não presumir que o token libera plano Pro. |
-| Llama 3.3 não funciona na Groq | Conferir descontinuação e configurar modelo disponível na conta. |
+| brapi retorna `401`/`403` | Verificar credencial e acesso ao endpoint de cotações contratado; Tesouro não utiliza esse adaptador. |
+| CSV do Tesouro indisponível ou incompatível | Verificar o recurso oficial e o contrato do parser; manter o último snapshot com sua idade real. Não recorrer à brapi nem publicar dados vazios como atualizados. |
+| Modelo primário não funciona na Groq | Conferir `GROQ_MODEL=openai/gpt-oss-120b`, disponibilidade e cotas da conta; não retornar ao modelo antigo nem confundir a definição do candidato com homologação de qualidade. |
 | Gemini retorna `429` | Consultar quota efetiva do projeto/modelo e ativar modo determinístico quando necessário. |
 | Login funciona, mas os dados não aparecem | Verificar `beta_users`, políticas, grants, projeto de destino e existência de snapshot. |
-| Login externo por e-mail falha | Conferir restrições do SMTP hospedado; utilizar OAuth ou SMTP adequadamente configurado. |
+| Login do beta falha | Verificar Google OAuth, callback, redirecionamentos e autorização em `beta_users`; não habilitar e-mail/senha ou outro método como alternativa. |
 | Histórico desaparece ao recarregar | Verificar se a UI está lendo o banco e se a gravação foi confirmada, não apenas atualizando estado local. |
 | Mensagem permanece “processando” | Consultar `request_runs`; marcar reserva expirada e permitir tentativa controlada. |
 | PDF excede tempo/CPU | Medir template e tamanho, reduzir limite e retornar erro explícito; não presumir continuação em background. |
@@ -2099,17 +2112,17 @@ Testar restauração em ambiente separado antes de considerar o backup operacion
 | Entrega | Resultado esperado |
 | --- | --- |
 | Resolver “100% open source” versus serviços gerenciados | Decisão explícita sobre a restrição real. |
-| Resolver cobertura gratuita de Tesouro | Adaptador, cobertura e custo definidos sem ambiguidade. |
-| Homologar fontes de FIIs | Disponibilidade e metodologia registradas por indicador. |
+| Homologar o contrato do CSV oficial de Tesouro | Fonte primária e única já decidida: Tesouro Transparente; registrar mapeamento e cobertura para implementar o adaptador próprio. |
+| Homologar fontes de FIIs | Disponibilidade e metodologia registradas por indicador; FFO yield, cap rate e vacância aceitos como `single_source` sem equivalente homologado no StatusInvest. |
 | Revisar uso de dados | Termos e estratégia de coleta/redistribuição documentados. |
-| Selecionar modelos disponíveis | IDs, limites e testes de qualidade reproduzíveis. |
+| Avaliar o candidato primário e configurar o fallback | `openai/gpt-oss-120b` já definido como candidato; concluir testes de qualidade, registrar limites e escolher o modelo Gemini quando o fallback for habilitado. |
 | Inicializar repositório | Estrutura, manifests, lockfiles, schemas e CI. |
 
 ### Curto prazo — v1
 
-Implementar coleta diária, publicação transacional, proveniência por campo, comparação entre fontes, autenticação, RLS, conversas persistentes, agente determinístico, frontend próprio e PDF privado reutilizável.
+Implementar coleta diária de ações, FIIs, ETFs e Tesouro, incluindo o adaptador próprio do CSV oficial; publicação transacional, proveniência por campo e comparação entre fontes quando aplicável; Google OAuth como login único do beta, RLS, conversas persistentes, agente determinístico, frontend próprio e PDF privado reutilizável com `pdf-lib` no runtime Deno das Edge Functions.
 
-Realizar beta fechado com universo reduzido e usuários autorizados. ETFs entram apenas se houver adaptação simples, sem comprometer os requisitos centrais.
+Realizar beta fechado com universo reduzido e usuários autorizados. ETFs integram o escopo funcional da v1 sob os mesmos critérios de qualidade dos demais ativos, sem condição de stretch goal. Tesouro não está bloqueado por decisão de fonte; sua liberação depende de implementar e homologar o adaptador oficial.
 
 ### Médio prazo — RIs com fontes
 
@@ -2148,7 +2161,7 @@ A escolha de embeddings, extração de tabelas, índice vetorial e processamento
 | Mais ativos e fontes | Cobertura e orçamento de coleta demonstrados. |
 | Métricas de qualidade de RAG | Conjunto de perguntas e evidências de referência. |
 | Orquestração com LangGraph | Necessidade real de ramificação, retomada ou revisão humana. |
-| Backend de renderização dedicado | Relatórios maiores justificam rever a restrição de infraestrutura. |
+| Backend de renderização dedicado | Apenas mediante nova decisão futura para relatórios maiores; não é alternativa pendente ao `pdf-lib` em Deno adotado na v1. |
 | Autohospedagem e modelos alternativos | Viabilidade técnica e financeira de uma stack mais independente. |
 
 O histórico de preços/taxas do Tesouro previsto para a v1 não implica entrega de séries históricas de fundamentos de ações e FIIs.
@@ -2236,7 +2249,6 @@ As referências abaixo fundamentam as informações sobre fornecedores e contrat
 | --- | --- |
 | brapi — planos | [Preços e cobertura][brapi-pricing] |
 | brapi — cotações | [Contrato de cotação v2][brapi-quote] |
-| brapi — Tesouro | [Rotas, acesso e interpretação de taxas][brapi-treasury] |
 | Fonte oficial de Tesouro | [CSV de preços e taxas][tesouro-csv] |
 | Fundamentus — ações | [Tabela de resultados][fundamentus-stocks] |
 | Fundamentus — FIIs | [Tabela de FIIs][fundamentus-fiis] |
@@ -2269,7 +2281,6 @@ As referências abaixo fundamentam as informações sobre fornecedores e contrat
 
 [brapi-pricing]: https://brapi.dev/pricing
 [brapi-quote]: https://brapi.dev/docs/acoes/cotacao
-[brapi-treasury]: https://brapi.dev/docs/tesouro-direto
 [tesouro-csv]: https://www.tesourotransparente.gov.br/ckan/dataset/taxas-dos-titulos-ofertados-pelo-tesouro-direto/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1
 [fundamentus-stocks]: https://www.fundamentus.com.br/resultado.php
 [fundamentus-fiis]: https://www.fundamentus.com.br/fii_resultado.php
