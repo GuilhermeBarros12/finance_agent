@@ -1,0 +1,6 @@
+# PROTÓTIPO DESCARTÁVEL. Troque project_id pelo ref do projeto de teste.
+project_id = "pdf-bench-spike"
+
+[functions.pdf-bench]
+verify_jwt = true # exige a anon key; evita endpoint público queimando CPU
+static_files = ["./functions/pdf-bench/fonts/*.ttf"]
