@@ -38,3 +38,14 @@ Bloqueios que dependem só do autor e já eram conhecidos antes da execução es
   3. `docs/tarefas/T06.md` com contagens desatualizadas (86 exemplos e 90 testes) e paridade afirmada sem citar as duas divergências acima.
 - **Estado do código:** branch `tarefa/T06` no remoto (commit 865e2e8), sem pull request e sem merge. Implementação completa; faltam só as três correções acima.
 - **O que destrava:** uma nova sessão corrige os três pontos em `tarefa/T06`, roda de novo a sonda de paridade e pede revisão. Não depende de segredo nem de decisão de produto. Bloqueia T08 e T10 e, por consequência, T09, T11, T14, T15, T18, T18b, T19 e a cadeia do front que depende delas.
+
+### T21a — Fundação do front e guia de design (2026-11-14)
+
+- **Motivo:** o check do bundle (`scripts/ci/check_bundle.sh`) falha por falso positivo, e corrigir exige alterar um guarda de segredos da CI, o que o agente não pode decidir.
+- **O que foi tentado:**
+  - O executor concluiu a tarefa: `npm run lint`, `typecheck`, `test` (6 testes) e `build` passam, e os guardrails também.
+  - O regex `sb_secret_` do script casa com o `@supabase/supabase-js` dentro do bundle, que traz esse texto literal numa checagem `startsWith('sb_secret_')`.
+  - O executor tentou afrouxar o regex e o classificador de permissões negou. O orquestrador não contornou a negativa.
+- **Evidência:** `npm run build` em `frontend/` seguido de `bash scripts/ci/check_bundle.sh frontend/dist` imprime `frontend/dist/assets/index-<hash>.js` e `::error::O bundle do frontend contém texto de chave privada`, com saída 1. A CI do front falharia nesse passo.
+- **Estado do código:** branch `tarefa/T21a` no remoto (commit 48f7406), sem pull request e sem merge. Trabalho completo e sem revisão: o revisor não foi acionado, porque o merge é impossível com a CI falhando.
+- **O que destrava:** decisão do autor sobre o guarda. A proposta é trocar `sb_secret_` por `sb_secret_[A-Za-z0-9_-]{20,}` em `scripts/ci/check_bundle.sh`, o mesmo padrão do `check_guardrails.sh`. Depois disso, abrir o PR de `tarefa/T21a`, rodar a revisão e a CI, e mesclar. Bloqueia T21b em diante (que já dependem da T08).
