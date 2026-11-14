@@ -22,7 +22,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T03 | Atualizar o README com as decisões | — | concluída | [#7](https://github.com/GuilhermeBarros12/finance_agent/pull/7) |
 | T04 | Escolher o universo de tickers | — | concluída | |
 | T05 | Inicializar a estrutura do repositório | T02 | concluída | [#8](https://github.com/GuilhermeBarros12/finance_agent/pull/8) |
-| T06 | Schema único de observação e validação | T05 | bloqueada (ver bloqueios.md) | |
+| T06 | Schema único de observação e validação | T05 | em andamento | |
 | T07 | Metodologia provisória dos campos | T05 | concluída | [#9](https://github.com/GuilhermeBarros12/finance_agent/pull/9) |
 | T08 | Migrations do banco | T05, T06 | pendente | |
 | T09 | RPC de publicação e papel dedicado | T08 | pendente | |
@@ -38,7 +38,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T18b | Edge Function de catálogo e estado dos dados | T18 | pendente | |
 | T19 | Classificador de intenção com LLM | T18 | pendente | |
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
-| T21a | Fundação do front e guia de design | T05 | bloqueada (ver bloqueios.md) | |
+| T21a | Fundação do front e guia de design | T05 | em andamento | |
 | T21b | Login e conversas | T21a, T08 | pendente | |
 | T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | pendente | |
 | T21d | Carteira | T21c | pendente | |
@@ -48,4 +48,4 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T22b | Publicar funções e frontend | T19, T21f, T22a | fora da leva | |
 | T23 | Exportação das conversas | — | absorvida pela T21e | |
 | T24 | Conferência manual de aceite | T17, T22b | fora da leva | |
-| T25 | Relatório final e pull request para `main` | todas as autônomas | em andamento | |
+| T25 | Relatório final e pull request para `main` | todas as autônomas | pendente | |
