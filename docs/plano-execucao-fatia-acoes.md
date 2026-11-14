@@ -76,7 +76,9 @@ Regras de processo:
 - Não crie commits vazios para manter o cron ativo (README 14.5).
 - Não inclua nesta fatia nada da lista "fora da fatia".
 - Não marque como feito o que não foi executado. Se um teste falhar, relate a falha com a saída.
-- Trabalhe num branch próprio por tarefa e abra pull request apenas se o autor pedir.
+- Trabalhe num branch próprio por tarefa (`tarefa/T10`) e entregue por pull request para `main`. Não faça merge: o autor aprova.
+- Registre o andamento em `docs/status-tarefas.md`.
+- Antes de cada commit, rode `bash scripts/ci/check_guardrails.sh`. A CI (`.github/workflows/ci.yml`) roda a mesma verificação e os testes em todo pull request.
 
 ## 4. Visão geral das tarefas
 
@@ -191,7 +193,7 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
   4. Frontend: projeto Vite com React e TypeScript em `frontend/`, com Vitest configurado e `frontend/.env.example` (README 12.4).
   5. Supabase: rode `supabase init` e versione `supabase/config.toml`.
   6. Crie `.env.collector.example` e `supabase/.env.functions.example` com as variáveis vazias (README 12.2 e 12.3, sem as variáveis do Gemini).
-  7. Crie `.github/workflows/ci.yml` que roda: `ruff check`, `pytest`, o typecheck e os testes do frontend. A CI usa só fixtures.
+  7. A CI já existe em `.github/workflows/ci.yml` e ativa cada job quando a parte correspondente aparece (`pyproject.toml`, `frontend/package.json`, `supabase/functions/deno.json`, `supabase/migrations/*.sql`). Não a recrie. Garanta que o projeto atende ao que ela roda: `ruff check .` e `pytest` na raiz; em `frontend/`, os scripts `lint`, `typecheck`, `test` e `build` no `package.json`. A CI usa só fixtures.
 - **Pronto quando:** `pytest` roda e passa (pode ter um teste de fumaça); `npm test` no frontend passa; a CI fica verde.
 - **Não fazer:** não crie as pastas de `reports`, `pdf`, `gemini.ts` nem `treasury_official.py`.
 

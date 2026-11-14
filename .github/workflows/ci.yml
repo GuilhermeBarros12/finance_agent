@@ -1,0 +1,199 @@
+name: CI
+
+# Verifica todo commit enviado a um pull request e à branch principal.
+# Cada job de linguagem só roda quando a parte correspondente do projeto existe,
+# para que a CI funcione desde o repositório vazio até a fatia completa.
+# A CI usa apenas fixtures: não faz scraping, não chama LLM e não usa segredos.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detectar partes do projeto
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python: ${{ steps.d.outputs.python }}
+      schemas: ${{ steps.d.outputs.schemas }}
+      frontend: ${{ steps.d.outputs.frontend }}
+      functions: ${{ steps.d.outputs.functions }}
+      database: ${{ steps.d.outputs.database }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: d
+        run: |
+          has() { [ -e "$1" ] && echo true || echo false; }
+          {
+            echo "python=$(has pyproject.toml)"
+            echo "schemas=$(has scripts/export_schemas.py)"
+            echo "frontend=$(has frontend/package.json)"
+            echo "functions=$(has supabase/functions/deno.json)"
+            if ls supabase/migrations/*.sql >/dev/null 2>&1; then
+              echo "database=true"
+            else
+              echo "database=false"
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+
+  guardrails:
+    name: Regras do projeto
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verificar regras
+        run: bash scripts/ci/check_guardrails.sh
+
+  python:
+    name: Coletor (Python)
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          if [ -f requirements.lock ] && [ -f requirements-dev.lock ]; then
+            python -m pip install --require-hashes -r requirements.lock
+            python -m pip install --require-hashes -r requirements-dev.lock
+            python -m pip install --no-deps -e .
+          else
+            echo "::warning::requirements.lock ou requirements-dev.lock ausente; instalando sem versões travadas."
+            python -m pip install -e . ruff pytest
+          fi
+      - name: Lint
+        run: ruff check .
+      - name: Testes
+        run: pytest
+      - name: Schemas atualizados
+        if: needs.detect.outputs.schemas == 'true'
+        run: |
+          python scripts/export_schemas.py
+          if ! git diff --exit-code -- schemas/; then
+            echo "::error::Os arquivos de schemas/ estão desatualizados. Rode scripts/export_schemas.py e faça commit."
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Instalar dependências
+        run: npm ci
+      - name: Lint
+        run: npm run lint --if-present
+      - name: Typecheck
+        run: npm run typecheck --if-present
+      - name: Testes
+        run: npm test --if-present
+        env:
+          CI: "true"
+      - name: Build
+        run: npm run build
+      - name: Bundle sem chave privada
+        run: bash ../scripts/ci/check_bundle.sh dist
+
+  functions:
+    name: Edge Functions (Deno)
+    needs: detect
+    if: needs.detect.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: supabase/functions
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - name: Lint
+        run: deno lint
+      - name: Typecheck
+        run: |
+          files=$(git ls-files '*.ts')
+          if [ -n "$files" ]; then deno check $files; fi
+      - name: Testes
+        env:
+          MOCK_LLM: "true"
+        run: |
+          if [ -n "$(git ls-files '*_test.ts' '*.test.ts')" ]; then
+            deno test --allow-env --allow-read --allow-net=127.0.0.1,localhost
+          else
+            echo "::warning::Nenhum teste Deno encontrado."
+          fi
+
+  database:
+    name: Banco (migrations e pgTAP)
+    needs: detect
+    if: needs.detect.outputs.database == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: latest
+      - name: Subir o banco local e aplicar migrations
+        run: supabase db start
+      - name: Testes pgTAP
+        run: |
+          if ls supabase/tests/database/*.sql >/dev/null 2>&1; then
+            supabase test db
+          else
+            echo "::warning::Nenhum teste pgTAP encontrado em supabase/tests/database."
+          fi
+
+  ci-ok:
+    # Único check a exigir na proteção da branch: falha se qualquer job acima falhar.
+    name: CI ok
+    needs: [detect, guardrails, python, frontend, functions, database]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Conferir resultados
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -qE '"result": "(failure|cancelled)"'; then
+            echo "::error::Pelo menos um job da CI falhou."
+            exit 1
+          fi
