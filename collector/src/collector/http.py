@@ -12,8 +12,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Self
 from urllib.parse import urlsplit
@@ -23,8 +22,10 @@ import httpx
 from collector.settings import PermissionStatus, SourceConfig, SourcesConfig
 
 MAX_ATTEMPTS = 3
-BACKOFF_BASE_SECONDS = Decimal(1)
-MAX_RETRY_AFTER_SECONDS = Decimal(120)
+# Todas as esperas são inteiros em microssegundos; o relógio é em nanossegundos.
+US_PER_SECOND = 1_000_000
+BACKOFF_BASE_US = 1 * US_PER_SECOND
+MAX_RETRY_AFTER_US = 120 * US_PER_SECOND
 DEFAULT_TIMEOUT_SECONDS = 20
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _DIGITS = re.compile(r"[0-9]{1,12}")
@@ -43,7 +44,18 @@ def build_user_agent(contact: str) -> str:
     contact = contact.strip()
     if not contact:
         raise ValueError("SCRAPER_CONTACT vazio")
+    if any(ord(c) < 32 or ord(c) == 127 for c in contact):
+        raise ValueError("SCRAPER_CONTACT com caractere de controle")
     return f"agente-investimentos-coletor/0.1 (contato: {contact})"
+
+
+def _sleep_us(microseconds: int) -> None:
+    """Dorme `microseconds` (int). A divisão int/int é a única conversão para o `time.sleep`."""
+    time.sleep(microseconds / US_PER_SECOND)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class HttpClient:
@@ -55,15 +67,17 @@ class HttpClient:
         contact: str,
         *,
         transport: httpx.BaseTransport | None = None,
-        sleep: Callable[[Decimal], None] = time.sleep,  # type: ignore[assignment]
-        clock: Callable[[], Decimal | int | float] = time.monotonic,
+        sleep: Callable[[int], None] = _sleep_us,
+        clock: Callable[[], int] = time.monotonic_ns,
+        wall_clock: Callable[[], datetime] = _utc_now,
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._sources = sources
         self._sleep = sleep
         self._clock = clock
+        self._wall_clock = wall_clock
         self._lock = threading.Lock()
-        self._next_slot: dict[str, Decimal] = {}
+        self._next_slot: dict[str, int] = {}
         self._user_agent = build_user_agent(contact)
         self._client = httpx.Client(
             transport=transport,
@@ -118,9 +132,9 @@ class HttpClient:
 
     def _wait_interval(self, host: str, max_per_minute: int) -> None:
         """Reserva o próximo horário livre do domínio sob lock e dorme fora dele."""
-        min_interval = Decimal(60) / Decimal(max_per_minute)
+        min_interval = (60 * US_PER_SECOND) // max_per_minute
         with self._lock:
-            now = Decimal(self._clock())
+            now = self._clock() // 1000  # ns -> us
             slot = now
             last = self._next_slot.get(host)
             if last is not None:
@@ -130,9 +144,8 @@ class HttpClient:
         if remaining > 0:
             self._sleep(remaining)
 
-    @staticmethod
-    def _retry_after(response: httpx.Response) -> Decimal | None:
-        """Segundos pedidos pelo servidor. `None` se o cabeçalho não existe.
+    def _retry_after(self, response: httpx.Response) -> int | None:
+        """Microssegundos pedidos pelo servidor. `None` se o cabeçalho não existe.
 
         Lança `ValueError` se existe e não é interpretável (inteiro ou data HTTP).
         """
@@ -141,15 +154,14 @@ class HttpClient:
             return None
         value = value.strip()
         if _DIGITS.fullmatch(value):
-            return Decimal(int(value))
+            return int(value) * US_PER_SECOND
         try:
             when = parsedate_to_datetime(value)
         except (TypeError, ValueError, IndexError):
             raise ValueError("Retry-After ilegível") from None
         if when.tzinfo is None:
             raise ValueError("Retry-After ilegível")
-        delta = (when - datetime.now(UTC)).total_seconds()
-        return max(Decimal(0), Decimal(delta))
+        return max(0, (when - self._wall_clock()) // timedelta(microseconds=1))
 
     def get(
         self,
@@ -166,12 +178,12 @@ class HttpClient:
         last_reason = "sem tentativa"
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self._wait_interval(source.host, source.max_requests_per_minute)
-            delay = BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+            delay = BACKOFF_BASE_US * (2 ** (attempt - 1))
             try:
                 response = self._client.get(url, params=params, headers=send_headers)
             except httpx.TransportError as exc:
                 last_reason = f"erro de transporte: {type(exc).__name__}"
-            except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+            except (httpx.HTTPError, httpx.InvalidURL, ValueError, OSError, RuntimeError) as exc:
                 raise FetchError(
                     f"{source_id}: requisição inválida ({type(exc).__name__})"
                 ) from None
@@ -188,9 +200,9 @@ class HttpClient:
                         f"{source_id} enviou Retry-After ilegível; tentativa abandonada"
                     ) from None
                 if retry_after is not None:
-                    if retry_after > MAX_RETRY_AFTER_SECONDS:
+                    if retry_after > MAX_RETRY_AFTER_US:
                         raise FetchError(
-                            f"{source_id} pediu espera de {retry_after:.0f}s (Retry-After); "
+                            f"{source_id} pediu espera de {retry_after // US_PER_SECOND}s (Retry-After); "
                             "tentativa abandonada"
                         )
                     delay = max(delay, retry_after)

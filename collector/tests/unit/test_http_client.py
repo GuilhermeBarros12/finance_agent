@@ -1,4 +1,5 @@
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from email.utils import format_datetime
@@ -28,10 +29,14 @@ def _sources(brapi_enabled: bool = True) -> SourcesConfig:
     )
 
 
+WALL_NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+S = 1_000_000
+
+
 class Env:
     def __init__(self, handler, sources=None) -> None:
-        self.sleeps: list[Decimal] = []
-        self.now = Decimal(0)
+        self.sleeps: list[int] = []  # microssegundos
+        self.now = 0  # microssegundos
         self.requests: list[httpx.Request] = []
 
         def wrapped(request: httpx.Request) -> httpx.Response:
@@ -43,12 +48,14 @@ class Env:
             "contato@example.test",
             transport=httpx.MockTransport(wrapped),
             sleep=self._sleep,
-            clock=lambda: self.now,
+            clock=lambda: self.now * 1000,  # ns
+            wall_clock=lambda: WALL_NOW,
         )
 
-    def _sleep(self, seconds: Decimal) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
+    def _sleep(self, microseconds: int) -> None:
+        assert isinstance(microseconds, int)
+        self.sleeps.append(microseconds)
+        self.now += microseconds
 
 
 def ok(_: httpx.Request) -> httpx.Response:
@@ -106,7 +113,7 @@ def test_retries_with_growing_wait_then_succeeds() -> None:
     assert env.client.get("fonte_a", "https://a.example.test/x").status_code == 200
     assert len(env.requests) == 3
     # esperas de recuo (1s, 2s); o intervalo por domínio (1s) já está coberto por elas
-    assert 1.0 in env.sleeps and 2.0 in env.sleeps
+    assert S in env.sleeps and 2 * S in env.sleeps
 
 
 def test_gives_up_after_three_attempts() -> None:
@@ -137,7 +144,7 @@ def test_honors_retry_after() -> None:
     responses = iter([httpx.Response(429, headers={"Retry-After": "7"}), httpx.Response(200)])
     env = Env(lambda _: next(responses))
     env.client.get("fonte_a", "https://a.example.test/x")
-    assert 7.0 in env.sleeps
+    assert 7 * S in env.sleeps
 
 
 def test_retry_after_too_long_aborts() -> None:
@@ -151,9 +158,9 @@ def test_min_interval_per_domain() -> None:
     env = Env(ok)  # 60 req/min => 1s entre requisições
     env.client.get("fonte_a", "https://a.example.test/1")
     env.client.get("fonte_a", "https://a.example.test/2")
-    assert env.sleeps == [1.0]
+    assert env.sleeps == [S]
     env.client.get("fonte_b", "https://b.example.test/1")  # outro domínio: sem espera
-    assert env.sleeps == [1.0]
+    assert env.sleeps == [S]
 
 
 def test_redirect_not_followed() -> None:
@@ -232,7 +239,7 @@ def test_refuses_prohibited_source_even_if_enabled() -> None:
 
 
 def test_retry_after_http_date_too_far_aborts() -> None:
-    when = format_datetime(datetime.now(UTC) + timedelta(hours=2), usegmt=True)
+    when = format_datetime(WALL_NOW + timedelta(hours=2), usegmt=True)
     env = Env(lambda _: httpx.Response(429, headers={"Retry-After": when}))
     with pytest.raises(FetchError, match="Retry-After"):
         env.client.get("fonte_a", "https://a.example.test/x")
@@ -240,11 +247,11 @@ def test_retry_after_http_date_too_far_aborts() -> None:
 
 
 def test_retry_after_http_date_within_limit_is_honored() -> None:
-    when = format_datetime(datetime.now(UTC) + timedelta(seconds=60), usegmt=True)
+    when = format_datetime(WALL_NOW + timedelta(seconds=60), usegmt=True)
     responses = iter([httpx.Response(429, headers={"Retry-After": when}), httpx.Response(200)])
     env = Env(lambda _: next(responses))
     env.client.get("fonte_a", "https://a.example.test/x")
-    assert max(env.sleeps) >= 50
+    assert max(env.sleeps) == 60 * S
 
 
 @pytest.mark.parametrize("value", ["amanha", "-5", "1.5", "", "Mon, 99 Foo 2026 25:61:61 GMT"])
@@ -259,7 +266,7 @@ def test_small_retry_after_does_not_shorten_backoff() -> None:
     codes = iter([503, 503, 200])
     env = Env(lambda _: httpx.Response(next(codes), headers={"Retry-After": "0"}))
     env.client.get("fonte_a", "https://a.example.test/x")
-    assert 1 in env.sleeps and 2 in env.sleeps
+    assert S in env.sleeps and 2 * S in env.sleeps
 
 
 @pytest.mark.parametrize(
@@ -301,8 +308,8 @@ def test_min_interval_holds_under_threads() -> None:
     lock = threading.Lock()
     env = Env(ok)
     # relógio fixo em 0: sem lock, todas as threads leriam o mesmo "último" e não esperariam
-    env.client._clock = lambda: 0  # type: ignore[assignment]
-    env.client._sleep = lambda s: (lock.acquire(), starts.append(s), lock.release())  # type: ignore[assignment]
+    env.client._clock = lambda: 0
+    env.client._sleep = lambda s: (lock.acquire(), starts.append(s), lock.release())
 
     def work() -> None:
         env.client._wait_interval("a.example.test", 60)
@@ -313,4 +320,76 @@ def test_min_interval_holds_under_threads() -> None:
     for t in threads:
         t.join()
     # cada thread recebe um horário distinto: esperas 0 (sem sleep), 1, 2, 3, 4
-    assert sorted(starts) == [1, 2, 3, 4]
+    assert sorted(starts) == [S, 2 * S, 3 * S, 4 * S]
+
+
+# --- sleep padrão (2ª revisão) ---
+
+
+def _default_sleep_client(responses, rpm: int = 600) -> tuple[HttpClient, list]:
+    sources = SourcesConfig(
+        sources=[
+            SourceConfig(
+                id="fonte_a",
+                base_url="https://a.example.test",
+                permission_status="permitida",
+                reviewed_at="2026-01-01",
+                max_requests_per_minute=rpm,
+                enabled=True,
+            )
+        ]
+    )
+    it = iter(responses)
+    client = HttpClient(
+        sources,
+        "contato@example.test",
+        transport=httpx.MockTransport(lambda _: next(it)),
+    )
+    return client, []
+
+
+def test_default_sleep_receives_number_not_decimal_for_interval(monkeypatch) -> None:
+    received: list = []
+    monkeypatch.setattr(time, "sleep", received.append)
+    client, _ = _default_sleep_client([httpx.Response(200), httpx.Response(200)])
+    client.get("fonte_a", "https://a.example.test/1")
+    client.get("fonte_a", "https://a.example.test/2")
+    assert len(received) == 1
+    assert type(received[0]) in (int, float) and not isinstance(received[0], Decimal)
+    assert 0 < received[0] <= 0.1  # 600/min => intervalo de 0,1 s
+
+
+def test_default_sleep_receives_number_for_429_backoff(monkeypatch) -> None:
+    received: list = []
+    monkeypatch.setattr(time, "sleep", received.append)
+    client, _ = _default_sleep_client(
+        [httpx.Response(429, headers={"Retry-After": "3"}), httpx.Response(200)]
+    )
+    client.get("fonte_a", "https://a.example.test/1")
+    assert all(type(v) in (int, float) for v in received)
+    assert 3 in received  # Retry-After de 3 s vence o recuo de 1 s
+
+
+def test_default_sleep_real_does_not_raise() -> None:
+    client, _ = _default_sleep_client([httpx.Response(200), httpx.Response(200)], rpm=6000)
+    started = time.monotonic_ns()
+    client.get("fonte_a", "https://a.example.test/1")
+    client.get("fonte_a", "https://a.example.test/2")  # dorme ~10 ms de verdade
+    assert time.monotonic_ns() - started >= 5_000_000
+
+
+def test_contact_with_line_break_rejected() -> None:
+    with pytest.raises(ValueError):
+        build_user_agent("a@example.test\r\nX-Evil: 1")
+
+
+def test_os_and_runtime_errors_become_fetch_error_without_url() -> None:
+    for exc in (OSError("/segredo/a.example.test"), RuntimeError("a.example.test")):
+
+        def boom(_: httpx.Request, exc: Exception = exc) -> httpx.Response:
+            raise exc
+
+        env = Env(boom)
+        with pytest.raises(FetchError) as info:
+            env.client.get("fonte_a", "https://a.example.test/x")
+        assert "a.example.test" not in str(info.value)
