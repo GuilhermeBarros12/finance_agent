@@ -14,7 +14,7 @@ Quem muda o estado: o orquestrador marca `em andamento`; o executor marca `em re
 | T04 | Escolher o universo de tickers | — | pendente | |
 | T05 | Inicializar a estrutura do repositório | T02 | pendente | |
 | T06 | Schema único de observação e validação | T05 | pendente | |
-| T07 | Homologar a metodologia dos campos | T01 | pendente | |
+| T07 | Homologar a metodologia dos campos | T01 | aguardando autor | |
 | T08 | Migrations do banco | T05, T06 | pendente | |
 | T09 | RPC de publicação e papel dedicado | T08 | pendente | |
 | T10 | Base do coletor e normalização | T06 | pendente | |
