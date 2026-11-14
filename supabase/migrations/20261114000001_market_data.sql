@@ -159,12 +159,13 @@ declare
   v_snapshot_id uuid;
   v_published timestamptz;
 begin
-  if tg_op = 'DELETE'
-     and coalesce(current_setting('app.retention_job', true), '') = 'on' then
-    return old;
-  end if;
-
   if tg_table_name = 'snapshots' then
+    -- A retenção só pode apagar o snapshot inteiro. As filhas não têm atalho: na
+    -- cascata o snapshot pai já não existe quando o trigger delas roda.
+    if tg_op = 'DELETE'
+       and coalesce(current_setting('app.retention_job', true), '') = 'on' then
+      return old;
+    end if;
     if tg_op in ('UPDATE', 'DELETE') and old.published_at is not null then
       raise exception 'snapshot % já publicado é imutável', old.id
         using errcode = 'integrity_constraint_violation';

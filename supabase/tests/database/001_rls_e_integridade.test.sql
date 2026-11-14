@@ -1,7 +1,7 @@
 -- T08: RLS, grants e integridade. Roda como postgres; troca de papel por `set local role`.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(46);
+select plan(51);
 
 -- Usuários sintéticos: ana (autorizada), bia (autorizada), caio (existe, não autorizado).
 insert into auth.users (id) values
@@ -74,6 +74,21 @@ select is(
   (select count(*)::int from pg_proc f join pg_namespace n on n.oid = f.pronamespace
     where n.nspname = 'public' and has_function_privilege('anon', f.oid, 'execute')),
   0, 'anon não executa nenhuma função de public');
+select is(
+  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    cross join unnest(array['select','insert','update','delete','truncate','references','trigger']) p(priv)
+    where n.nspname = 'public' and c.relname in ('assets','data_sources','collection_runs','snapshots',
+      'observations','field_validations','active_snapshot','llm_usage')
+      and has_table_privilege('authenticated', c.oid, p.priv)),
+  0, 'authenticated sem privilégio de tabela em dados de mercado e llm_usage');
+select is(
+  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname in ('assets','data_sources','collection_runs','snapshots',
+      'observations','field_validations','active_snapshot','llm_usage')
+      and (has_any_column_privilege('authenticated', c.oid, 'select')
+        or has_any_column_privilege('authenticated', c.oid, 'insert')
+        or has_any_column_privilege('authenticated', c.oid, 'update'))),
+  0, 'authenticated sem privilégio de coluna em dados de mercado e llm_usage');
 select ok(has_function_privilege('authenticated', 'public.is_allowed_user()', 'execute'),
   'authenticated executa is_allowed_user (as políticas usam)');
 select ok(not has_function_privilege('authenticated', 'public.reject_published_snapshot_change()', 'execute')
@@ -180,12 +195,20 @@ set local role service_role;
 select throws_ok(
   $$update public.observations set value_decimal = 1 where snapshot_id = 'd0000000-0000-4000-8000-000000000001'$$,
   '23000', null, 'service_role com retenção ligada não altera observação publicada');
+select throws_ok(
+  $$delete from public.observations where snapshot_id = 'd0000000-0000-4000-8000-000000000001'$$,
+  '23000', null, 'com retenção ligada, delete direto de observação publicada falha');
+select throws_ok(
+  $$delete from public.field_validations where snapshot_id = 'd0000000-0000-4000-8000-000000000001'$$,
+  '23000', null, 'com retenção ligada, delete direto de validação publicada falha');
 select lives_ok(
   $$delete from public.snapshots where id = 'd0000000-0000-4000-8000-000000000001'$$,
   'retenção apaga snapshot publicado (service_role)');
 reset role;
 select is((select count(*)::int from public.observations where snapshot_id = 'd0000000-0000-4000-8000-000000000001'),
   0, 'retenção apagou as observações em cascata');
+select is((select count(*)::int from public.field_validations where snapshot_id = 'd0000000-0000-4000-8000-000000000001'),
+  0, 'retenção apagou as validações em cascata');
 
 select * from finish();
 rollback;
