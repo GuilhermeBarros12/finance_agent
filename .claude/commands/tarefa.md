@@ -1,25 +1,38 @@
 ---
-description: Executa uma tarefa do plano com sub-agents (executor ou pesquisador, depois revisor)
+description: Executa uma tarefa do plano com sub-agents (executor, depois revisor) e a entrega no branch fatia-acoes
 argument-hint: <ID da tarefa, por exemplo T05>
 ---
 
 Execute a tarefa **$ARGUMENTS** de `docs/plano-execucao-fatia-acoes.md`. Você é o orquestrador: delega o trabalho e confere o resultado. Não implemente a tarefa você mesmo.
 
-1. **Checar se pode começar.** Leia a seção da tarefa no plano e `docs/status-tarefas.md`. Se alguma tarefa de **Depende de** não estiver `concluída`, pare e diga qual falta. Se a tarefa for só **HUMANO**, mostre ao autor o que ele precisa fazer e pare.
+Regras do fluxo: ADR 0002 (`docs/adr/0002-execucao-autonoma.md`), decisões E3 e E11.
 
-2. **Preparar o branch.** Crie o branch `tarefa/$ARGUMENTS` a partir de `main` atualizada. Marque a tarefa como `em andamento` em `docs/status-tarefas.md`.
+1. **Atualizar.** `git fetch origin` e entre no branch `fatia-acoes` atualizado. Se ele não existir no remoto, pare e avise.
 
-3. **Delegar a execução.**
-   - `T01` e `T07`: use o sub-agent `pesquisador-fontes`.
-   - As demais: use o sub-agent `executor-tarefa`.
+2. **Checar se pode começar.** Leia a seção da tarefa no plano e `docs/status-tarefas.md`.
+   - Estado `concluída`, `fora da leva` ou `absorvida`: não há o que fazer. Diga isso e pare.
+   - Estado `bloqueada`: confira em `docs/pendencias.md` e `docs/bloqueios.md` se o que destrava já foi resolvido. Se não foi, pare e diga o que falta.
+   - Alguma tarefa de **Depende de** não está `concluída`: pare e diga qual falta.
 
-   Passe o ID da tarefa e o nome do branch. Espere o relato.
+3. **Preparar o branch.** Crie `tarefa/$ARGUMENTS` a partir de `fatia-acoes`. Marque a tarefa como `em andamento` em `docs/status-tarefas.md` e faça commit.
 
-4. **Delegar a revisão.** Para tarefas de código, use o sub-agent `revisor-tarefa`, passando o ID e o relato do executor.
-   - Se o veredito for `reprovado`, devolva a lista de problemas ao `executor-tarefa` e peça nova revisão. Faça no máximo 2 rodadas de correção. Se ainda reprovar, pare e relate ao autor.
+4. **Delegar a execução** ao sub-agent `executor-tarefa`, passando o ID e o nome do branch. Espere o relato.
 
-5. **Conferir você mesmo.** Rode `bash scripts/ci/check_guardrails.sh` e veja `git status`. Não repasse ao autor um resultado que você não conferiu.
+5. **Delegar a revisão** ao sub-agent `revisor-tarefa`, passando o ID, o branch e o relato do executor.
+   - Se o veredito for `reprovado`, devolva a lista de problemas ao `executor-tarefa` e peça nova revisão.
+   - No máximo 2 rodadas de correção. Se a terceira revisão ainda reprovar, vá para o passo 9 (bloqueio).
 
-6. **Entregar.** Envie o branch e abra um pull request para `main` com o título `$ARGUMENTS: <resumo>`, usando o modelo de `.github/pull_request_template.md`. A CI roda no pull request. Não faça merge: quem aprova é o autor.
+6. **Conferir você mesmo.** Rode `bash scripts/ci/check_guardrails.sh` e veja `git status` e `git log fatia-acoes..HEAD --oneline`. Não repasse um resultado que você não conferiu.
 
-7. **Relatar ao autor:** o que foi feito, o veredito do revisor, o link do pull request e as pendências que dependem dele.
+7. **Abrir o pull request.** Envie o branch e abra um pull request de `tarefa/$ARGUMENTS` para **`fatia-acoes`** (nunca para `main`), com o título `$ARGUMENTS: <resumo>` e o corpo no modelo de `.github/pull_request_template.md`, incluindo o veredito do revisor.
+
+8. **Esperar a CI e mesclar.** Consulte os checks do pull request até o check `CI ok` terminar.
+   - `CI ok` com sucesso e revisor `aprovado`: faça o merge do pull request em `fatia-acoes`. Depois, em `fatia-acoes`, marque a tarefa como `concluída` com o link do pull request em `docs/status-tarefas.md`, faça commit e envie.
+   - CI com falha: devolva o log da falha ao `executor-tarefa`, peça a correção e uma nova revisão. No máximo 2 tentativas. Se continuar falhando, vá para o passo 9.
+   - Nunca faça merge com a CI em andamento, com falha, ou com o revisor reprovando.
+
+9. **Bloqueio.** Se a tarefa travar (revisor reprovou duas correções, CI falhou duas vezes, o plano contradiz o repositório, ou a tarefa exige segredo, painel ou acesso que você não tem): acrescente uma entrada em `docs/bloqueios.md` no formato descrito lá, marque a tarefa como `bloqueada` em `docs/status-tarefas.md`, faça commit e envie para `fatia-acoes`. Deixe o branch `tarefa/$ARGUMENTS` no remoto, sem mesclar.
+
+10. **Relatar:** o que foi feito, o veredito do revisor, o link do pull request, o estado final da tarefa e as pendências que dependem do autor.
+
+Nunca faça merge em `main`. Nunca desative teste nem regra da CI para conseguir o merge.

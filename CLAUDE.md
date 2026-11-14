@@ -6,18 +6,30 @@ Aplicação web pessoal que coleta indicadores de ações em duas fontes, compar
 
 | Documento | Uso |
 | --- | --- |
-| `docs/adr/0001-primeira-fatia-acoes.md` | Decisões aceitas. **Prevalece sobre o README.** |
-| `docs/plano-execucao-fatia-acoes.md` | Tarefas (T01 a T24), dependências e critérios de conclusão |
-| `docs/status-tarefas.md` | Estado de cada tarefa |
+| `docs/adr/0002-execucao-autonoma.md` | Decisões E1 a E20. **Prevalece sobre o ADR 0001.** |
+| `docs/adr/0001-primeira-fatia-acoes.md` | Decisões D1 a D21. **Prevalece sobre o README.** |
+| `docs/plano-execucao-fatia-acoes.md` | Tarefas, dependências e critérios de conclusão |
+| `docs/status-tarefas.md` | Estado de cada tarefa. Vale a versão do branch `fatia-acoes` |
+| `docs/pendencias.md` | O que depende do autor |
+| `docs/bloqueios.md` | O que travou durante a execução |
+| `docs/tarefas/Txx.md` | Explicação do que cada tarefa fez e por quê |
 | `README.md` | Especificação completa. Leia só as seções citadas na tarefa |
 
 ## Como trabalhar
 
-- Uma tarefa por branch (`tarefa/T10`) e por pull request. O comando `/tarefa T10` orquestra os sub-agents de `.claude/agents/`.
-- Só comece uma tarefa cujas dependências estejam `concluída` em `docs/status-tarefas.md`.
+- `/executar-plano` percorre todas as tarefas liberadas, em sequência. `/tarefa T10` executa uma só. Os dois usam os sub-agents de `.claude/agents/`.
+- Branch de integração: `fatia-acoes`. Cada tarefa tem o branch `tarefa/T10`, criado a partir dele, e um pull request **para `fatia-acoes`**.
+- O orquestrador mescla em `fatia-acoes` quando o revisor aprova e o check `CI ok` passa.
+- **Ninguém além do autor faz merge em `main`.**
+- Só comece uma tarefa cujas dependências estejam `concluída`.
+- Tarefa que trava: registre em `docs/bloqueios.md`, marque `bloqueada` e siga para a próxima.
 - Mensagens de commit começam pelo ID da tarefa: `T10: ...`.
 - Antes de qualquer commit, rode `bash scripts/ci/check_guardrails.sh`.
-- Não faça merge em `main`. O autor aprova os pull requests.
+- Toda tarefa de código deixa `docs/tarefas/Txx.md` e atualiza `docs/data-dictionary.md` e `docs/api.md` quando mexe em banco ou endpoint.
+
+## Limite da execução autônoma
+
+O alvo é o sistema funcionando em ambiente local: Supabase local, dados sintéticos e `MOCK_LLM=true`. Sem projeto hospedado, sem segredos, sem scraping real, sem LLM real e sem deploy.
 
 ## Regras que a CI não perdoa
 
@@ -34,6 +46,8 @@ Aplicação web pessoal que coleta indicadores de ações em duas fontes, compar
 - Falha de coleta nunca vira zero, tabela vazia ou data de hoje.
 - Um campo não herda a validação de outro. Divergência não é resolvida por média, por escolha de um lado nem pelo LLM.
 - O `user_id` vem do JWT, nunca do corpo da requisição.
-- Não escreva parser de uma fonte antes de ela estar habilitada em `config/sources.yaml` (tarefa T01).
+- A carteira guarda só o símbolo da ação e nunca é enviada ao LLM.
+- Não escreva parser de Fundamentus ou StatusInvest sem `docs/source-methodologies/estrutura-paginas.md`.
+- Nas telas: leia `.claude/skills/frontend-design/SKILL.md` e `docs/design.md` antes; nenhum estado indicado só por cor; o navegador não calcula valor de mercado.
 - Não desative teste nem silencie lint para a CI passar.
-- Se o plano contradisser o que você encontrar, pare e relate.
+- Se o plano contradisser o que você encontrar, pare a tarefa e registre o bloqueio.
