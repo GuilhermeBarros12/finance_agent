@@ -10,7 +10,7 @@ Quem muda o estado: o orquestrador marca `em andamento`; o executor marca `em re
 | --- | --- | --- | --- | --- |
 | T01 | Revisar termos e `robots.txt` das fontes | — | concluída | [#2](https://github.com/GuilhermeBarros12/finance_agent/pull/2) |
 | T02 | Licença MIT e proteção de segredos | — | pendente | |
-| T03 | Atualizar o README com as decisões | — | pendente | |
+| T03 | Atualizar o README com as decisões | — | em revisão | |
 | T04 | Escolher o universo de tickers | — | pendente | |
 | T05 | Inicializar a estrutura do repositório | T02 | pendente | |
 | T06 | Schema único de observação e validação | T05 | pendente | |
