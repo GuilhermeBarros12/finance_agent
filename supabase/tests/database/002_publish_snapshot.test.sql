@@ -8,6 +8,12 @@ grant collector_ingest to current_user;
 -- As funções do pgTAP ficam em extensions; os papéis testados precisam enxergá-las (revertido).
 grant usage on schema extensions to collector_ingest, authenticated, anon;
 
+create function pg_temp.man(p_run uuid, p_at text, p_total int, p_upd int, p_failures jsonb default '[]')
+returns jsonb language sql as $$
+  select jsonb_build_object('snapshot_id', 'snap-' || p_run, 'run_id', p_run, 'collected_at', p_at,
+    'universe_version', 'v', 'assets_total', p_total, 'assets_updated', p_upd, 'failures', p_failures) $$;
+grant execute on function pg_temp.man(uuid, text, int, int, jsonb) to public;
+
 -- Estado inicial (seed da T08): snapshot d0000000-...-001 publicado e ativo.
 select is(
   (select snapshot_id from public.active_snapshot where universe = 'stocks'),
@@ -160,7 +166,8 @@ values
    '{}', null, null, null, null, null, 'nenhuma fonte trouxe o campo');
 select lives_ok(
   $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000a1',
-    '{"collected_at":"2026-11-14T10:05:00Z","universe_version":"t09-1","assets_total":2,
+    '{"snapshot_id":"snap-a1","run_id":"c1000000-0000-4000-8000-0000000000a1",
+      "collected_at":"2026-11-14T10:05:00Z","universe_version":"t09-1","assets_total":2,"assets_updated":2,
       "failures":[{"asset_id":"TEST4","source_id":"fundamentus","reason":"timeout"}]}'::jsonb)$$,
   'publicação válida roda como collector_ingest');
 reset role;
@@ -200,8 +207,7 @@ select is(
   (select status from public.collection_runs where id = 'c1000000-0000-4000-8000-0000000000a1'),
   'succeeded', 'execução marcada como succeeded');
 select throws_ok(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000a1',
-    '{"collected_at":"2026-11-14T10:05:00Z","universe_version":"t09-1","assets_total":2}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000a1', pg_temp.man('c1000000-0000-4000-8000-0000000000a1', '2026-11-14T10:05:00Z', 2, 2))$$,
   '23000', null, 'o mesmo run não publica duas vezes');
 select throws_ok(
   $$update public.snapshots set universe_version = 'x' where run_id = 'c1000000-0000-4000-8000-0000000000a1'$$,
@@ -215,8 +221,7 @@ grant select on t09_ativo to public;
 -- Staging vazio
 insert into public.collection_runs (id) values ('c1000000-0000-4000-8000-0000000000b1');
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1',
-    '{"collected_at":"2026-11-14T11:00:00Z","universe_version":"v","assets_total":2}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1', pg_temp.man('c1000000-0000-4000-8000-0000000000b1', '2026-11-14T11:00:00Z', 2, 2))$$,
   '%staging sem observações%', 'staging vazio não publica');
 select ok((select snapshot_id from public.active_snapshot where universe = 'stocks')
           = (select snapshot_id from t09_ativo), 'staging vazio não troca o ponteiro');
@@ -239,8 +244,7 @@ insert into public.staging_validations (run_id, asset_symbol, metric, status, fr
 values ('c1000000-0000-4000-8000-0000000000b1', 'DEMO3', 'quote_price', 'single_source', 'fresh',
   'e2000000-0000-4000-8000-000000000001', array['e2000000-0000-4000-8000-000000000001']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1',
-    '{"collected_at":"2026-11-14T11:00:00Z","universe_version":"v","assets_total":4}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1', pg_temp.man('c1000000-0000-4000-8000-0000000000b1', '2026-11-14T11:00:00Z', 4, 4))$$,
   '%cobertura insuficiente%', 'menos da metade do universo não publica');
 select ok((select snapshot_id from public.active_snapshot where universe = 'stocks')
           = (select snapshot_id from t09_ativo), 'cobertura insuficiente não troca o ponteiro');
@@ -258,8 +262,7 @@ insert into public.staging_validations (run_id, asset_symbol, metric, status, fr
 values ('c1000000-0000-4000-8000-0000000000b1', 'TEST4', 'quote_price', 'single_source', 'fresh',
   'e2000000-0000-4000-8000-000000000002', array['e2000000-0000-4000-8000-000000000002']::uuid[]);
 select lives_ok(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1',
-    '{"collected_at":"2026-11-14T11:00:00Z","universe_version":"v","assets_total":4}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000b1', pg_temp.man('c1000000-0000-4000-8000-0000000000b1', '2026-11-14T11:00:00Z', 4, 2))$$,
   'exatamente metade do universo publica');
 select is((select status from public.collection_runs where id = 'c1000000-0000-4000-8000-0000000000b1'),
   'partial', 'lote com cobertura parcial fica como partial');
@@ -290,8 +293,7 @@ select pg_temp.obs('c1000000-0000-4000-8000-0000000000c1', 'e3000000-0000-4000-8
 select pg_temp.val('c1000000-0000-4000-8000-0000000000c1', 'DEMO3', 'quote_price', 'single_source',
   array['e3000000-0000-4000-8000-000000000001']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c1',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c1', pg_temp.man('c1000000-0000-4000-8000-0000000000c1', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%observação duplicada%', 'chave duplicada (ativo, métrica, fonte) não publica');
 
 select pg_temp.novo_run('c1000000-0000-4000-8000-0000000000c2');
@@ -299,8 +301,7 @@ select pg_temp.obs('c1000000-0000-4000-8000-0000000000c2', 'e4000000-0000-4000-8
 select pg_temp.val('c1000000-0000-4000-8000-0000000000c2', 'XXXX9', 'quote_price', 'single_source',
   array['e4000000-0000-4000-8000-000000000001']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c2',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c2', pg_temp.man('c1000000-0000-4000-8000-0000000000c2', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%ativo inexistente: XXXX9%', 'ativo inexistente impede a publicação');
 
 select pg_temp.novo_run('c1000000-0000-4000-8000-0000000000c3');
@@ -308,8 +309,7 @@ select pg_temp.obs('c1000000-0000-4000-8000-0000000000c3', 'e5000000-0000-4000-8
 select pg_temp.val('c1000000-0000-4000-8000-0000000000c3', 'DEMO3', 'quote_price', 'single_source',
   array['e5000000-0000-4000-8000-000000000001']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c3',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c3', pg_temp.man('c1000000-0000-4000-8000-0000000000c3', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%fonte inexistente: fonte_fantasma%', 'fonte inexistente impede a publicação');
 
 -- Validação que aponta observação de outro ativo ou de outra métrica
@@ -324,16 +324,14 @@ select pg_temp.val('c1000000-0000-4000-8000-0000000000c4', 'TEST4', 'quote_price
 select pg_temp.val('c1000000-0000-4000-8000-0000000000c4', 'DEMO3', 'price_to_book', 'single_source',
   array['e6000000-0000-4000-8000-000000000003']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c4',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":2}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c4', pg_temp.man('c1000000-0000-4000-8000-0000000000c4', '2026-11-14T12:00:00Z', 2, 2))$$,
   '%outro ativo, métrica ou execução%', 'validação com observação de outro ativo não publica');
 delete from public.staging_validations where run_id = 'c1000000-0000-4000-8000-0000000000c4'
   and asset_symbol = 'DEMO3' and metric = 'quote_price';
 select pg_temp.val('c1000000-0000-4000-8000-0000000000c4', 'DEMO3', 'quote_price', 'single_source',
   array['e6000000-0000-4000-8000-000000000003']::uuid[]);  -- observação de outra métrica
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c4',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":2}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c4', pg_temp.man('c1000000-0000-4000-8000-0000000000c4', '2026-11-14T12:00:00Z', 2, 2))$$,
   '%outro ativo, métrica ou execução%', 'validação com observação de outra métrica não publica');
 
 -- Estado incoerente: verified com uma só observação / com duas observações da mesma fonte
@@ -346,8 +344,7 @@ values ('c1000000-0000-4000-8000-0000000000c5', 'DEMO3', 'quote_price', 'verifie
   'e7000000-0000-4000-8000-000000000001', array['e7000000-0000-4000-8000-000000000001']::uuid[],
   0, 0.1, 0.1, 0, 't09');
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c5',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c5', pg_temp.man('c1000000-0000-4000-8000-0000000000c5', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%validação incoerente%', 'verified com uma só observação não publica');
 
 -- Selecionada fora de observation_ids; divergent com seleção (barrado já no staging)
@@ -359,8 +356,7 @@ insert into public.staging_validations
 values ('c1000000-0000-4000-8000-0000000000c6', 'DEMO3', 'quote_price', 'incomparable', 'fresh',
   'e8000000-0000-4000-8000-000000000002', array['e8000000-0000-4000-8000-000000000001']::uuid[]);
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c6',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c6', pg_temp.man('c1000000-0000-4000-8000-0000000000c6', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%selecionada fora de observation_ids%', 'observação selecionada fora de observation_ids não publica');
 select throws_ok(
   $$insert into public.staging_validations
@@ -375,8 +371,7 @@ select throws_ok(
 select pg_temp.novo_run('c1000000-0000-4000-8000-0000000000c7');
 select pg_temp.obs('c1000000-0000-4000-8000-0000000000c7', 'e9000000-0000-4000-8000-000000000001', 'DEMO3', 'brapi', 'quote_price');
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c7',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000c7', pg_temp.man('c1000000-0000-4000-8000-0000000000c7', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%observação sem validação%', 'observação sem validação do campo não publica');
 
 select ok((select snapshot_id from public.active_snapshot where universe = 'stocks')
@@ -393,8 +388,7 @@ create function public.t09_boom() returns trigger language plpgsql as
 create trigger t09_boom before insert on public.field_validations
   for each row execute function public.t09_boom();
 select throws_like(
-  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000d1',
-    '{"collected_at":"2026-11-14T12:00:00Z","universe_version":"v","assets_total":1}'::jsonb)$$,
+  $$select public.publish_snapshot('c1000000-0000-4000-8000-0000000000d1', pg_temp.man('c1000000-0000-4000-8000-0000000000d1', '2026-11-14T12:00:00Z', 1, 1))$$,
   '%falha injetada%', 'erro no meio da cópia aborta a publicação');
 drop trigger t09_boom on public.field_validations;
 select is(

@@ -35,6 +35,19 @@ create trigger active_snapshot_published_only
 
 revoke all on function public.reject_unpublished_active_snapshot() from public, anon, authenticated;
 
+-- Reforço dos checks da T08: NaN e Infinity não são valores financeiros (numeric os aceita).
+alter table public.observations
+  add constraint observations_finite_check
+    check (value_decimal <> 'NaN'::numeric and abs(value_decimal) <> 'Infinity'::numeric),
+  add constraint observations_text_check
+    check (raw_value <> '' and parser_version <> '' and methodology_id <> '');
+alter table public.field_validations
+  add constraint field_validations_finite_check check (
+    coalesce(delta_abs <> 'NaN'::numeric and abs(delta_abs) <> 'Infinity'::numeric, true)
+    and coalesce(limit_value <> 'NaN'::numeric and abs(limit_value) <> 'Infinity'::numeric, true)
+    and coalesce(atol <> 'NaN'::numeric and abs(atol) <> 'Infinity'::numeric, true)
+    and coalesce(rtol <> 'NaN'::numeric and abs(rtol) <> 'Infinity'::numeric, true));
+
 -- Staging ---------------------------------------------------------------------------
 -- Espelha observations e field_validations, mas com ids legíveis (symbol, code), como no
 -- contrato Python. Sem FK para assets/data_sources e sem unique de negócio: quem decide é
@@ -69,6 +82,10 @@ create table public.staging_observations (
     or (metric in ('dividend_yield', 'roe') and unit = 'percent' and currency is null)),
   constraint staging_observations_period_check
     check (period_start is null or period_end is null or period_end >= period_start),
+  constraint staging_observations_finite_check
+    check (value_decimal <> 'NaN'::numeric and abs(value_decimal) <> 'Infinity'::numeric),
+  constraint staging_observations_text_check
+    check (raw_value <> '' and parser_version <> '' and methodology_id <> ''),
   constraint staging_observations_url_check check (source_url ~* '^https?://[^@\s]+$'),
   constraint staging_observations_hash_check check (raw_content_hash ~ '^[0-9a-f]{64}$')
 );
@@ -107,6 +124,13 @@ create table public.staging_validations (
       and delta_abs >= 0 and limit_value >= 0 and atol >= 0 and rtol >= 0)
     or (status not in ('verified', 'divergent')
       and delta_abs is null and limit_value is null and atol is null and rtol is null)),
+  constraint staging_validations_finite_check check (
+    coalesce(delta_abs <> 'NaN'::numeric and abs(delta_abs) <> 'Infinity'::numeric, true)
+    and coalesce(limit_value <> 'NaN'::numeric and abs(limit_value) <> 'Infinity'::numeric, true)
+    and coalesce(atol <> 'NaN'::numeric and abs(atol) <> 'Infinity'::numeric, true)
+    and coalesce(rtol <> 'NaN'::numeric and abs(rtol) <> 'Infinity'::numeric, true)),
+  constraint staging_validations_ids_check check (
+    array_ndims(observation_ids) is null or array_ndims(observation_ids) = 1),
   constraint staging_validations_no_selection_check check (
     status not in ('missing', 'invalid', 'not_applicable')
     or selected_observation_id is null)
@@ -154,9 +178,11 @@ create policy collector_insert_staging_validations on public.staging_validations
   for insert to collector_ingest with check (true);
 
 -- publish_snapshot -----------------------------------------------------------------------
--- Manifesto (jsonb): obrigatórios `collected_at` (instante ISO com fuso), `universe_version`
--- (texto) e `assets_total` (tamanho do universo, inteiro >= 1). Opcionais: `universe`
--- (só 'stocks'), `failures` (array) e `assets_updated`/`run_id` (se vierem, têm de bater).
+-- Manifesto (jsonb): mesmo contrato da SnapshotManifest da T06. Exatamente as chaves
+-- snapshot_id, run_id (igual ao p_run_id), collected_at (ISO 8601 com fuso explícito),
+-- universe_version, assets_total (inteiro >= 1), assets_updated (igual ao staging) e
+-- failures (array obrigatório, itens {asset_id, source_id, reason} não vazios). Chave extra
+-- é recusada. Falha de coleta nunca vira lista vazia por omissão.
 create function public.publish_snapshot(p_run_id uuid, p_manifest jsonb)
 returns uuid
 language plpgsql
@@ -173,43 +199,99 @@ declare
   v_run public.collection_runs%rowtype;
   v_snapshot uuid;
   v_bad text;
+  v_n numeric;
+  v_item jsonb;
+  v_last timestamptz;
 begin
   if p_run_id is null or p_manifest is null or jsonb_typeof(p_manifest) <> 'object' then
     raise exception 'manifesto inválido: run_id e objeto são obrigatórios'
       using errcode = 'invalid_parameter_value';
   end if;
-  if jsonb_typeof(p_manifest -> 'collected_at') is distinct from 'string'
-     or jsonb_typeof(p_manifest -> 'universe_version') is distinct from 'string'
-     or jsonb_typeof(p_manifest -> 'assets_total') is distinct from 'number'
-     or coalesce(p_manifest ->> 'universe_version', '') = '' then
-    raise exception 'manifesto inválido: collected_at, universe_version e assets_total são obrigatórios'
+  select string_agg(k, ', ') into v_bad
+  from jsonb_object_keys(p_manifest) k
+  where k not in ('snapshot_id', 'run_id', 'collected_at', 'universe_version',
+                  'assets_total', 'assets_updated', 'failures');
+  if v_bad is not null then
+    raise exception 'manifesto inválido: chaves não previstas: %', v_bad
       using errcode = 'invalid_parameter_value';
   end if;
-  if (p_manifest ? 'failures') and jsonb_typeof(p_manifest -> 'failures') <> 'array' then
-    raise exception 'manifesto inválido: failures deve ser um array'
-      using errcode = 'invalid_parameter_value';
-  end if;
-  if (p_manifest ? 'run_id') and p_manifest ->> 'run_id' is distinct from p_run_id::text then
+  foreach v_item in array array[to_jsonb('snapshot_id'::text), to_jsonb('run_id'::text),
+      to_jsonb('collected_at'::text), to_jsonb('universe_version'::text)] loop
+    if jsonb_typeof(p_manifest -> (v_item #>> '{}')) is distinct from 'string'
+       or (p_manifest ->> (v_item #>> '{}')) = '' then
+      raise exception 'manifesto inválido: % é obrigatório (texto não vazio)', v_item #>> '{}'
+        using errcode = 'invalid_parameter_value';
+    end if;
+  end loop;
+  if p_manifest ->> 'run_id' is distinct from p_run_id::text then
     raise exception 'manifesto inválido: run_id do manifesto difere do informado'
       using errcode = 'invalid_parameter_value';
   end if;
 
-  v_universe := coalesce(p_manifest ->> 'universe', 'stocks');
-  if v_universe <> 'stocks' then
-    raise exception 'universo % não suportado na primeira fatia', v_universe
+  -- Instante ISO 8601 com fuso explícito (mesma regra da T06); sem 'now', 'infinity' ou data pura.
+  v_bad := p_manifest ->> 'collected_at';
+  if v_bad !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+     or (v_bad ~ '[+-][0-9]{2}:[0-9]{2}$'
+         and (substring(v_bad from '[+-]([0-9]{2}):[0-9]{2}$')::int > 23
+              or substring(v_bad from '[+-][0-9]{2}:([0-9]{2})$')::int > 59)) then
+    raise exception 'manifesto inválido: collected_at deve ser instante ISO 8601 com fuso (ex.: 2026-09-18T21:00:00Z)'
       using errcode = 'invalid_parameter_value';
   end if;
-  v_collected := (p_manifest ->> 'collected_at')::timestamptz;
+  begin
+    v_collected := v_bad::timestamptz;
+  exception when others then
+    raise exception 'manifesto inválido: collected_at não é um instante válido'
+      using errcode = 'invalid_parameter_value';
+  end;
   v_version := p_manifest ->> 'universe_version';
-  v_total := (p_manifest ->> 'assets_total')::integer;
-  v_failures := coalesce(p_manifest -> 'failures', '[]'::jsonb);
+
+  foreach v_bad in array array['assets_total', 'assets_updated'] loop
+    if jsonb_typeof(p_manifest -> v_bad) is distinct from 'number' then
+      raise exception 'manifesto inválido: % deve ser número inteiro', v_bad
+        using errcode = 'invalid_parameter_value';
+    end if;
+    v_n := (p_manifest ->> v_bad)::numeric;
+    if v_n <> trunc(v_n) or v_n < 0 or v_n > 2147483647 then
+      raise exception 'manifesto inválido: % deve ser inteiro entre 0 e 2147483647', v_bad
+        using errcode = 'invalid_parameter_value';
+    end if;
+  end loop;
+  v_total := (p_manifest ->> 'assets_total')::numeric::integer;
   if v_total < 1 then
     raise exception 'manifesto inválido: assets_total deve ser >= 1'
       using errcode = 'invalid_parameter_value';
   end if;
+  if (p_manifest ->> 'assets_updated')::numeric > v_total then
+    raise exception 'manifesto inválido: assets_updated maior que assets_total'
+      using errcode = 'invalid_parameter_value';
+  end if;
+
+  if jsonb_typeof(p_manifest -> 'failures') is distinct from 'array' then
+    raise exception 'manifesto inválido: failures é obrigatório e deve ser um array'
+      using errcode = 'invalid_parameter_value';
+  end if;
+  v_failures := p_manifest -> 'failures';
+  for v_item in select value from jsonb_array_elements(v_failures) loop
+    if jsonb_typeof(v_item) is distinct from 'object'
+       or exists (select 1 from jsonb_object_keys(v_item) k
+                  where k not in ('asset_id', 'source_id', 'reason'))
+       or jsonb_typeof(v_item -> 'asset_id') is distinct from 'string'
+       or jsonb_typeof(v_item -> 'source_id') is distinct from 'string'
+       or jsonb_typeof(v_item -> 'reason') is distinct from 'string'
+       or (v_item ->> 'asset_id') = '' or (v_item ->> 'source_id') = ''
+       or (v_item ->> 'reason') = '' then
+      raise exception 'manifesto inválido: cada falha exige asset_id, source_id e reason (texto não vazio) e nada além'
+        using errcode = 'invalid_parameter_value';
+    end if;
+  end loop;
+  v_universe := 'stocks';
 
   -- Serializa publicações do mesmo universo e trava a execução contra publicação dupla.
   perform pg_advisory_xact_lock(hashtextextended('publish_snapshot:' || v_universe, 0));
+  -- Congela o staging durante a publicação: o collector_ingest só faz INSERT, que passa a
+  -- esperar a transação terminar. Sem isso, linhas inseridas entre a validação e a cópia
+  -- (READ COMMITTED) seriam copiadas sem terem sido validadas. A função é da dona das tabelas.
+  lock table public.staging_observations, public.staging_validations in share row exclusive mode;
   select * into v_run from public.collection_runs where id = p_run_id for update;
   if not found then
     raise exception 'execução % não existe', p_run_id
@@ -221,9 +303,37 @@ begin
       using errcode = 'integrity_constraint_violation';
   end if;
 
+  -- Publicação fora de ordem: nunca regride o snapshot ativo.
+  select s.collected_at into v_last
+  from public.active_snapshot a join public.snapshots s on s.id = a.snapshot_id
+  where a.universe = v_universe;
+  if v_last is not null and v_collected < v_last then
+    raise exception 'collected_at (%) anterior ao do snapshot ativo (%): publicação fora de ordem', v_collected, v_last
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
   -- Integridade do staging: qualquer falha aborta tudo e active_snapshot não muda.
   if not exists (select 1 from public.staging_observations o where o.run_id = p_run_id) then
     raise exception 'staging sem observações para a execução %', p_run_id
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  -- Defesa em profundidade: os checks do staging já recusam, mas a RPC não depende deles.
+  select string_agg(distinct x.k, ', ') into v_bad
+  from (
+    select o.asset_symbol || '/' || o.metric as k from public.staging_observations o
+    where o.run_id = p_run_id
+      and (o.value_decimal = 'NaN'::numeric or abs(o.value_decimal) = 'Infinity'::numeric)
+    union all
+    select v.asset_symbol || '/' || v.metric from public.staging_validations v
+    where v.run_id = p_run_id
+      and (v.delta_abs = 'NaN'::numeric or abs(v.delta_abs) = 'Infinity'::numeric
+        or v.limit_value = 'NaN'::numeric or abs(v.limit_value) = 'Infinity'::numeric
+        or v.atol = 'NaN'::numeric or abs(v.atol) = 'Infinity'::numeric
+        or v.rtol = 'NaN'::numeric or abs(v.rtol) = 'Infinity'::numeric)
+  ) x;
+  if v_bad is not null then
+    raise exception 'valor não finito (NaN ou Infinity) em: %', v_bad
       using errcode = 'integrity_constraint_violation';
   end if;
 
@@ -277,11 +387,6 @@ begin
   if v_updated * 2 < v_total then
     raise exception 'cobertura insuficiente: % de % ativos com observação (mínimo: metade)', v_updated, v_total
       using errcode = 'integrity_constraint_violation';
-  end if;
-  if (p_manifest ? 'assets_updated')
-     and (p_manifest ->> 'assets_updated') is distinct from v_updated::text then
-    raise exception 'manifesto inválido: assets_updated difere do staging (%)', v_updated
-      using errcode = 'invalid_parameter_value';
   end if;
 
   -- Validações: cada uma só enxerga observações do mesmo run, ativo e métrica.
@@ -340,6 +445,11 @@ begin
   if v_bad is not null then
     raise exception 'observação sem validação do seu campo: %', v_bad
       using errcode = 'integrity_constraint_violation';
+  end if;
+
+  if (p_manifest ->> 'assets_updated')::numeric <> v_updated then
+    raise exception 'manifesto inválido: assets_updated difere do staging (%)', v_updated
+      using errcode = 'invalid_parameter_value';
   end if;
 
   -- Cópia e publicação na mesma transação.
@@ -410,8 +520,8 @@ as $$
 declare
   v_deleted integer;
 begin
-  if p_keep_days is null or p_keep_days < 1 then
-    raise exception 'p_keep_days deve ser >= 1' using errcode = 'invalid_parameter_value';
+  if p_keep_days is null or p_keep_days < 1 or p_keep_days > 36500 then
+    raise exception 'p_keep_days deve estar entre 1 e 36500' using errcode = 'invalid_parameter_value';
   end if;
 
   perform set_config('app.retention_job', 'on', true);
