@@ -21,7 +21,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T02 | Licença MIT e proteção de segredos | — | concluída | [#6](https://github.com/GuilhermeBarros12/finance_agent/pull/6) |
 | T03 | Atualizar o README com as decisões | — | concluída | [#7](https://github.com/GuilhermeBarros12/finance_agent/pull/7) |
 | T04 | Escolher o universo de tickers | — | concluída | |
-| T05 | Inicializar a estrutura do repositório | T02 | em andamento | |
+| T05 | Inicializar a estrutura do repositório | T02 | em revisão | |
 | T06 | Schema único de observação e validação | T05 | pendente | |
 | T07 | Metodologia provisória dos campos | T05 | pendente | |
 | T08 | Migrations do banco | T05, T06 | pendente | |
