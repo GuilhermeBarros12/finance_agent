@@ -25,6 +25,8 @@ Quando resolver um item, marque a caixa e, se ele liberar uma tarefa, mude o est
 - [ ] **P-08 — Proteger a `main`.** Settings, Rules, Rulesets: exigir pull request e o check `CI ok`.
 - [ ] **P-09 — Conferir a licença e o contato de segurança.** A T02 usa "Guilherme" como titular da licença MIT e o recurso "Report a vulnerability" do GitHub como canal do `SECURITY.md`. Ative esse recurso em Settings, Advanced Security, "Private vulnerability reporting", ou troque o canal.
 - [ ] **P-10 — Benchmark do PDF.** O branch `claude/happy-edison-uqdci8` tem o protótipo, sem pull request. Decidir se roda o benchmark agora ou junto da fatia de PDF.
+- [ ] **P-11 — Destravar a T06.** Três correções pequenas (offset de fuso, substituto UTF-16, contagens em `docs/tarefas/T06.md`) em `tarefa/T06`; ver `docs/bloqueios.md`. **Libera:** T08, T10 e a cadeia seguinte.
+- [ ] **P-12 — Decidir o guarda do bundle.** `scripts/ci/check_bundle.sh` acusa `sb_secret_` dentro do `@supabase/supabase-js`. Proposta: trocar por `sb_secret_[A-Za-z0-9_-]{20,}`. **Libera:** o PR da T21a (branch `tarefa/T21a`).
 
 ## Para o futuro
 
