@@ -1,7 +1,7 @@
 # Agente de Investimentos
 
 ![Status: em desenvolvimento](https://img.shields.io/badge/status-em%20desenvolvimento-orange)
-[![Licença: MIT proposta](https://img.shields.io/badge/licen%C3%A7a-MIT%20%28proposta%29-yellow)](#licenca)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green)](#licenca)
 ![Coleta: Python](https://img.shields.io/badge/coleta-Python-3776AB)
 ![Aplicação: TypeScript](https://img.shields.io/badge/aplica%C3%A7%C3%A3o-TypeScript-3178C6)
 ![Persistência: Supabase](https://img.shields.io/badge/persist%C3%AAncia-Supabase-3ECF8E)
@@ -2219,21 +2219,11 @@ Este aviso não substitui a avaliação das obrigações aplicáveis à operaç�
 <a id="licenca"></a>
 ## 24. Licença e autoria
 
-**Licença sugerida para o código: MIT — pendente de confirmação pelo autor.**
-
-Antes de anunciar o repositório como efetivamente licenciado sob MIT:
-
-```text
-Confirmar a escolha da licença
-  -> criar LICENSE com o texto oficial
-  -> preencher ano e titular dos direitos
-  -> revisar licenças de dependências e ativos
-  -> atualizar o badge de "MIT proposta" para "MIT"
-```
+**Licença do código: MIT, confirmada pelo autor (ADR 0001, D18).** O texto oficial está no arquivo [`LICENSE`](LICENSE), com ano 2026 e titular "Guilherme".
 
 Referência: [texto oficial da licença MIT na Open Source Initiative][mit-license].
 
-Enquanto não houver um arquivo `LICENSE` válido, este README não deve ser interpretado como concessão completa da licença MIT.
+Ainda falta revisar as licenças de dependências e ativos antes de divulgar o repositório.
 
 A licença do código **não relicencia** dados coletados, documentos de RI, marcas, fontes tipográficas, modelos ou serviços externos. Cada material mantém seus próprios termos. O recurso de dados abertos do Tesouro consultado, por exemplo, informa uma licença específica para a base. [Referência][tesouro-csv].
 
