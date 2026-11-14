@@ -40,8 +40,17 @@ alter table public.observations
   add constraint observations_finite_check
     check (value_decimal <> 'NaN'::numeric and abs(value_decimal) <> 'Infinity'::numeric),
   add constraint observations_text_check
-    check (raw_value <> '' and parser_version <> '' and methodology_id <> '');
+    check (raw_value <> '' and parser_version <> '' and methodology_id <> ''),
+  -- Instantes e datas infinitos não são datas de coleta, referência ou período (null passa).
+  add constraint observations_time_finite_check check (
+    collected_at not in ('infinity', '-infinity')
+    and reference_at not in ('infinity', '-infinity')
+    and reference_date not in ('infinity', '-infinity')
+    and period_start not in ('infinity', '-infinity')
+    and period_end not in ('infinity', '-infinity'));
 alter table public.field_validations
+  add constraint field_validations_tolerance_text_check
+    check (tolerance_version is null or tolerance_version <> ''),
   add constraint field_validations_finite_check check (
     coalesce(delta_abs <> 'NaN'::numeric and abs(delta_abs) <> 'Infinity'::numeric, true)
     and coalesce(limit_value <> 'NaN'::numeric and abs(limit_value) <> 'Infinity'::numeric, true)
@@ -86,6 +95,12 @@ create table public.staging_observations (
     check (value_decimal <> 'NaN'::numeric and abs(value_decimal) <> 'Infinity'::numeric),
   constraint staging_observations_text_check
     check (raw_value <> '' and parser_version <> '' and methodology_id <> ''),
+  constraint staging_observations_time_finite_check check (
+    collected_at not in ('infinity', '-infinity')
+    and reference_at not in ('infinity', '-infinity')
+    and reference_date not in ('infinity', '-infinity')
+    and period_start not in ('infinity', '-infinity')
+    and period_end not in ('infinity', '-infinity')),
   constraint staging_observations_url_check check (source_url ~* '^https?://[^@\s]+$'),
   constraint staging_observations_hash_check check (raw_content_hash ~ '^[0-9a-f]{64}$')
 );
@@ -129,6 +144,8 @@ create table public.staging_validations (
     and coalesce(limit_value <> 'NaN'::numeric and abs(limit_value) <> 'Infinity'::numeric, true)
     and coalesce(atol <> 'NaN'::numeric and abs(atol) <> 'Infinity'::numeric, true)
     and coalesce(rtol <> 'NaN'::numeric and abs(rtol) <> 'Infinity'::numeric, true)),
+  constraint staging_validations_tolerance_text_check
+    check (tolerance_version is null or tolerance_version <> ''),
   constraint staging_validations_ids_check check (
     array_ndims(observation_ids) is null or array_ndims(observation_ids) = 1),
   constraint staging_validations_no_selection_check check (
@@ -202,6 +219,8 @@ declare
   v_n numeric;
   v_item jsonb;
   v_last timestamptz;
+  v_prev_lock text;
+  v_limit constant interval := interval '5 minutes';
 begin
   if p_run_id is null or p_manifest is null or jsonb_typeof(p_manifest) <> 'object' then
     raise exception 'manifesto inválido: run_id e objeto são obrigatórios'
@@ -228,9 +247,10 @@ begin
       using errcode = 'invalid_parameter_value';
   end if;
 
-  -- Instante ISO 8601 com fuso explícito (mesma regra da T06); sem 'now', 'infinity' ou data pura.
+  -- Instante ISO 8601 com fuso explícito (mesma regra da T06); sem 'now', 'infinity' ou data
+  -- pura. Hora 00-23, minuto e segundo 00-59 (sem 24:00:00 nem segundo 60).
   v_bad := p_manifest ->> 'collected_at';
-  if v_bad !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+  if v_bad !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
      or (v_bad ~ '[+-][0-9]{2}:[0-9]{2}$'
          and (substring(v_bad from '[+-]([0-9]{2}):[0-9]{2}$')::int > 23
               or substring(v_bad from '[+-][0-9]{2}:([0-9]{2})$')::int > 59)) then
@@ -243,6 +263,12 @@ begin
     raise exception 'manifesto inválido: collected_at não é um instante válido'
       using errcode = 'invalid_parameter_value';
   end;
+  -- Um collected_at no futuro travaria as publicações seguintes (regra de ordem abaixo) sem
+  -- saída: snapshot publicado é imutável e a retenção nunca apaga o ativo.
+  if v_collected > now() + v_limit then
+    raise exception 'manifesto inválido: collected_at (%) está no futuro (tolerância de 5 minutos)', v_collected
+      using errcode = 'invalid_parameter_value';
+  end if;
   v_version := p_manifest ->> 'universe_version';
 
   foreach v_bad in array array['assets_total', 'assets_updated'] loop
@@ -287,6 +313,10 @@ begin
   v_universe := 'stocks';
 
   -- Serializa publicações do mesmo universo e trava a execução contra publicação dupla.
+  -- lock_timeout curto: quem esperar mais de 30 s por este lock ou pelo de tabela falha com
+  -- 55P03 em vez de ficar parado até o statement_timeout. O valor anterior é restaurado no fim.
+  v_prev_lock := current_setting('lock_timeout');
+  perform set_config('lock_timeout', '30s', true);
   perform pg_advisory_xact_lock(hashtextextended('publish_snapshot:' || v_universe, 0));
   -- Congela o staging durante a publicação: o collector_ingest só faz INSERT, que passa a
   -- esperar a transação terminar. Sem isso, linhas inseridas entre a validação e a cópia
@@ -334,6 +364,39 @@ begin
   ) x;
   if v_bad is not null then
     raise exception 'valor não finito (NaN ou Infinity) em: %', v_bad
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  -- Instantes e datas: infinitos nunca; coleta e referência não passam do futuro (com
+  -- tolerância); período coerente (mesmas regras da ObservationRecord da T06).
+  select string_agg(distinct o.asset_symbol || '/' || o.metric, ', ') into v_bad
+  from public.staging_observations o
+  where o.run_id = p_run_id
+    and (o.collected_at in ('infinity', '-infinity') or o.reference_at in ('infinity', '-infinity')
+      or o.reference_date in ('infinity', '-infinity') or o.period_start in ('infinity', '-infinity')
+      or o.period_end in ('infinity', '-infinity'));
+  if v_bad is not null then
+    raise exception 'instante ou data infinito em: %', v_bad
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  select string_agg(distinct o.asset_symbol || '/' || o.metric, ', ') into v_bad
+  from public.staging_observations o
+  where o.run_id = p_run_id
+    and (o.collected_at > now() + v_limit
+      or o.reference_at > now() + v_limit
+      or o.reference_date > ((now() + v_limit) at time zone 'UTC')::date
+      or o.period_end < o.period_start);
+  if v_bad is not null then
+    raise exception 'observação com data no futuro (tolerância de 5 minutos) ou período invertido em: %', v_bad
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  select string_agg(v.asset_symbol || '/' || v.metric, ', ') into v_bad
+  from public.staging_validations v
+  where v.run_id = p_run_id and v.tolerance_version = '';
+  if v_bad is not null then
+    raise exception 'tolerance_version vazio em: %', v_bad
       using errcode = 'integrity_constraint_violation';
   end if;
 
@@ -498,6 +561,7 @@ begin
   delete from public.staging_validations where run_id = p_run_id;
   delete from public.staging_observations where run_id = p_run_id;
 
+  perform set_config('lock_timeout', v_prev_lock, true);
   return v_snapshot;
 end;
 $$;
