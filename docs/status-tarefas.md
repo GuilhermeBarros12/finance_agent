@@ -26,7 +26,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T07 | Metodologia provisória dos campos | T05 | concluída | [#9](https://github.com/GuilhermeBarros12/finance_agent/pull/9) |
 | T08 | Migrations do banco | T05, T06 | concluída | [#13](https://github.com/GuilhermeBarros12/finance_agent/pull/13) |
 | T09 | RPC de publicação e papel dedicado | T08 | pendente | |
-| T10 | Base do coletor e normalização | T06 | pendente | |
+| T10 | Base do coletor e normalização | T06 | em andamento | |
 | T11 | Adaptador brapi | T10 | pendente | |
 | T12 | Adaptador Fundamentus | T07, T10 | bloqueada (P-01) | |
 | T13 | Adaptador StatusInvest | T07, T10 | bloqueada (P-01) | |
