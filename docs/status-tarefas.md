@@ -22,7 +22,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T03 | Atualizar o README com as decisões | — | concluída | [#7](https://github.com/GuilhermeBarros12/finance_agent/pull/7) |
 | T04 | Escolher o universo de tickers | — | concluída | |
 | T05 | Inicializar a estrutura do repositório | T02 | concluída | [#8](https://github.com/GuilhermeBarros12/finance_agent/pull/8) |
-| T06 | Schema único de observação e validação | T05 | em andamento | |
+| T06 | Schema único de observação e validação | T05 | em revisão | |
 | T07 | Metodologia provisória dos campos | T05 | pendente | |
 | T08 | Migrations do banco | T05, T06 | pendente | |
 | T09 | RPC de publicação e papel dedicado | T08 | pendente | |

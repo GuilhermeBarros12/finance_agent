@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "AssetClass": {
+      "description": "Classe do ativo. Nesta fatia só existem ações (ADR 0001).",
+      "enum": [
+        "stock"
+      ],
+      "title": "AssetClass",
+      "type": "string"
+    },
+    "Metric": {
+      "description": "Os cinco campos da fatia.",
+      "enum": [
+        "quote_price",
+        "price_to_book",
+        "price_to_earnings",
+        "dividend_yield",
+        "roe"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "Unit": {
+      "enum": [
+        "BRL",
+        "ratio",
+        "percent"
+      ],
+      "title": "Unit",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Um campo de um ativo em uma fonte (README 7.1).",
+  "properties": {
+    "asset_class": {
+      "$ref": "#/$defs/AssetClass"
+    },
+    "asset_id": {
+      "minLength": 1,
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "collected_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+      "title": "Collected At",
+      "type": "string"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "pattern": "^BRL$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Currency"
+    },
+    "methodology_id": {
+      "default": "unknown",
+      "minLength": 1,
+      "title": "Methodology Id",
+      "type": "string"
+    },
+    "metric": {
+      "$ref": "#/$defs/Metric"
+    },
+    "observation_id": {
+      "minLength": 1,
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "parser_version": {
+      "minLength": 1,
+      "title": "Parser Version",
+      "type": "string"
+    },
+    "period_end": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Period End"
+    },
+    "period_start": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Period Start"
+    },
+    "raw_content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Raw Content Hash",
+      "type": "string"
+    },
+    "raw_value": {
+      "minLength": 1,
+      "title": "Raw Value",
+      "type": "string"
+    },
+    "reference_at": {
+      "anyOf": [
+        {
+          "pattern": "(?:^\\d{4}-\\d{2}-\\d{2}$)|(?:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$)",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reference At"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "source_id": {
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_url": {
+      "minLength": 1,
+      "pattern": "^https?://",
+      "title": "Source Url",
+      "type": "string"
+    },
+    "unit": {
+      "$ref": "#/$defs/Unit"
+    },
+    "upstream_source": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Upstream Source"
+    },
+    "value_decimal": {
+      "pattern": "^-?\\d+(\\.\\d+)?$",
+      "title": "Value Decimal",
+      "type": "string"
+    }
+  },
+  "required": [
+    "observation_id",
+    "asset_id",
+    "asset_class",
+    "metric",
+    "raw_value",
+    "value_decimal",
+    "unit",
+    "collected_at",
+    "source_id",
+    "source_url",
+    "run_id",
+    "parser_version",
+    "raw_content_hash"
+  ],
+  "title": "Observation",
+  "type": "object"
+}

@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "SourceFailure": {
+      "additionalProperties": false,
+      "description": "Falha de coleta de um ativo em uma fonte. Nunca vira zero nem dado vazio.",
+      "properties": {
+        "asset_id": {
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "source_id",
+        "reason"
+      ],
+      "title": "SourceFailure",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Resumo de um lote publicado.",
+  "properties": {
+    "assets_total": {
+      "minimum": 0,
+      "title": "Assets Total",
+      "type": "integer"
+    },
+    "assets_updated": {
+      "minimum": 0,
+      "title": "Assets Updated",
+      "type": "integer"
+    },
+    "collected_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+      "title": "Collected At",
+      "type": "string"
+    },
+    "failures": {
+      "items": {
+        "$ref": "#/$defs/SourceFailure"
+      },
+      "title": "Failures",
+      "type": "array"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "minLength": 1,
+      "title": "Snapshot Id",
+      "type": "string"
+    },
+    "universe_version": {
+      "minLength": 1,
+      "title": "Universe Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_id",
+    "run_id",
+    "collected_at",
+    "universe_version",
+    "assets_total",
+    "assets_updated",
+    "failures"
+  ],
+  "title": "SnapshotManifest",
+  "type": "object"
+}

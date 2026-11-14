@@ -1,0 +1,15 @@
+{
+  "snapshot_id": "snap-2026-09-18",
+  "run_id": "run-2026-09-18",
+  "collected_at": "2026-09-18T21:00:00Z",
+  "universe_version": "universe-1",
+  "assets_total": -1,
+  "assets_updated": 9,
+  "failures": [
+    {
+      "asset_id": "TEST4",
+      "source_id": "statusinvest",
+      "reason": "timeout"
+    }
+  ]
+}

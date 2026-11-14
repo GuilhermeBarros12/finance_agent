@@ -1,0 +1,12 @@
+{
+  "asset_id": "DEMO3",
+  "metric": "dividend_yield",
+  "status": "single_source",
+  "freshness": "stale",
+  "selected_observation_id": "obs-a",
+  "observation_ids": [
+    "obs-a"
+  ],
+  "comparison": null,
+  "reason": "apenas uma fonte"
+}
