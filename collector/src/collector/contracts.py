@@ -23,6 +23,7 @@ from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -159,6 +160,9 @@ def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, str) and re.fullmatch(DATETIME_PATTERN, value):
+        offset = re.search(r"[+-]([0-9]{2}):([0-9]{2})$", value)
+        if offset and (int(offset.group(1)) > 23 or int(offset.group(2)) > 59):
+            raise ValueError("offset de fuso inválido (hora até 23, minuto até 59)")
         parsed = datetime.fromisoformat(value)
     else:
         raise ValueError("instante deve ser string ISO 8601 com fuso (ex.: 2026-09-18T21:00:00Z)")
@@ -207,13 +211,25 @@ ReferenceAt = Annotated[
     ),
 ]
 
-NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
+
+def _check_well_formed(value: str) -> str:
+    """Substituto UTF-16 isolado não é texto válido (igual a `isWellFormed` no Zod)."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("texto com substituto UTF-16 isolado") from None
+    return value
+
+
+WellFormedStr = Annotated[str, AfterValidator(_check_well_formed)]
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1), AfterValidator(_check_well_formed)]
 Sha256Hex = Annotated[str, StringConstraints(pattern=SHA256_PATTERN)]
 
 
 def _check_source_url(value: Any) -> str:
     if not isinstance(value, str):
         raise PydanticCustomError("url_type", "source_url deve ser string")
+    _check_well_formed(value)
     if re.search(URL_FORBIDDEN_CHARS, value):
         raise ValueError("source_url não pode conter espaço, controle ou barra invertida")
     parts = urlsplit(value)
@@ -351,7 +367,7 @@ class FieldValidation(_Contract):
     selected_observation_id: NonEmptyStr | None = None
     observation_ids: list[NonEmptyStr]
     comparison: Comparison | None = None
-    reason: str | None = None
+    reason: WellFormedStr | None = None
 
     @model_validator(mode="after")
     def _check_selection(self) -> FieldValidation:

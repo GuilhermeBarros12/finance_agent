@@ -103,9 +103,14 @@ export const isoDateTime = z.string().regex(DATETIME_PATTERN).refine(
   isRealDateTime,
 );
 const referenceAt = z.union([isoDate, isoDateTime]);
-const nonEmpty = z.string().min(1);
+// Substituto UTF-16 isolado não é texto válido: o Pydantic rejeita, então o Zod também.
+const wellFormed = (s: string) => s.isWellFormed();
+const nonEmpty = z.string().min(1).refine(wellFormed, {
+  message: "texto com substituto UTF-16 isolado",
+});
 
 export function isSafeSourceUrl(value: string): boolean {
+  if (!value.isWellFormed()) return false;
   if (hasForbiddenUrlChar(value)) return false;
   const match = value.match(/^https?:\/\/([^/?#]*)/i);
   if (!match || !match[1]) return false;
@@ -253,7 +258,9 @@ export const fieldValidationSchema = z
     selected_observation_id: nonEmpty.nullish(),
     observation_ids: z.array(nonEmpty),
     comparison: comparisonSchema.nullish(),
-    reason: z.string().nullish(),
+    reason: z.string().refine(wellFormed, {
+      message: "texto com substituto UTF-16 isolado",
+    }).nullish(),
   })
   .superRefine((v, ctx) => {
     if (v.status === "divergent" && v.selected_observation_id != null) {
