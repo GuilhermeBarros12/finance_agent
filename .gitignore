@@ -19,3 +19,4 @@ backups/
 
 test-results/
 playwright-report/
+*.egg-info/

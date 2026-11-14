@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "collector"
+version = "0.1.0"
+description = "Coletor de indicadores de ações do Agente de Investimentos"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "httpx",
+  "beautifulsoup4",
+  "pydantic",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["collector/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["collector/tests"]
+pythonpath = ["collector/src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["frontend", "node_modules", "supabase/functions"]

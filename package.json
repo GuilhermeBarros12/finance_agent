@@ -1,0 +1,12 @@
+{
+  "name": "agente-investimentos",
+  "private": true,
+  "license": "MIT",
+  "description": "Ferramentas de repositório do Agente de Investimentos",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "supabase": "3.1.0"
+  }
+}
