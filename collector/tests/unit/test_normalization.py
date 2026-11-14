@@ -52,6 +52,12 @@ def test_parse_br_decimal_valid(text: str, expected: Decimal) -> None:
         "١٢٣",
         ",5",
         "5,",
+        "0.123",
+        "0.850",
+        "00012",
+        "007",
+        "01,5",
+        "1234.567",
     ],
 )
 def test_parse_br_decimal_invalid_raises(text: str) -> None:
@@ -108,3 +114,15 @@ def test_garbage_after_parse_missing_still_errors() -> None:
     assert parse_missing("lixo") is None
     with pytest.raises(NormalizationError):
         parse_br_decimal("lixo")
+
+
+def test_parse_percent_str_has_two_places() -> None:
+    assert str(parse_percent("8,5%")) == "8.50"
+    assert str(parse_percent("12%")) == "12.00"
+    assert str(parse_percent("-3,255%")) == "-3.26"
+
+
+@pytest.mark.parametrize("value", [0, 1.5, b"-", ["-"]])
+def test_parse_missing_non_text_raises(value: object) -> None:
+    with pytest.raises(NormalizationError):
+        parse_missing(value)  # type: ignore[arg-type]

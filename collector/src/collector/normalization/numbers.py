@@ -13,7 +13,8 @@ from decimal import Decimal
 from enum import StrEnum
 
 # Dígitos ASCII apenas. Milhar com ponto em grupos de três; decimal com vírgula.
-_BR_DECIMAL = re.compile(r"-?(?:[0-9]{1,3}(?:\.[0-9]{3})+|[0-9]+)(?:,[0-9]+)?")
+# Sem zero à esquerda: "0" ou "0,x" só como zero; "0.123" e "00012" são erro.
+_BR_DECIMAL = re.compile(r"-?(?:0|[1-9][0-9]{0,2}(?:\.[0-9]{3})+|[1-9][0-9]*)(?:,[0-9]+)?")
 
 
 class NormalizationError(ValueError):
@@ -42,13 +43,16 @@ def parse_br_decimal(text: str) -> Decimal:
 
 
 def parse_percent(text: str) -> Decimal:
-    """``"8,5%"`` vira ``Decimal("8.5")``, na escala de 0 a 100 (sem dividir por 100)."""
+    """``"8,5%"`` vira ``Decimal("8.50")``: escala 0 a 100, quantizado a 2 casas.
+
+    O quantize usa o arredondamento padrão do contexto (meio-par), só para casas além da 2ª.
+    """
     if not isinstance(text, str):
         raise NormalizationError(f"esperado texto, recebido {type(text).__name__}")
     cleaned = text.strip()
     if not cleaned.endswith("%"):
         raise NormalizationError(f"percentual sem '%': {text!r}")
-    return parse_br_decimal(cleaned[:-1])
+    return parse_br_decimal(cleaned[:-1]).quantize(Decimal("0.01"))
 
 
 def parse_missing(text: str | None) -> MissingKind | None:
@@ -59,6 +63,8 @@ def parse_missing(text: str | None) -> MissingKind | None:
     """
     if text is None:
         return MissingKind.EMPTY
+    if not isinstance(text, str):
+        raise NormalizationError(f"esperado texto, recebido {type(text).__name__}")
     cleaned = text.strip()
     if not cleaned:
         return MissingKind.EMPTY

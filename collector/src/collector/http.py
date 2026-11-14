@@ -1,34 +1,42 @@
 """Cliente HTTP compartilhado pelos adaptadores (T10).
 
-Recusa domínios fora de `config/sources.yaml` e fontes `enabled: false`, limita as
+Recusa domínios fora de `config/sources.yaml`, fontes `enabled: false` e fontes
+`permission_status: proibida`, limita as
 tentativas, respeita `Retry-After` e o intervalo mínimo por domínio. Falha final
 lança `FetchError`; nunca devolve corpo vazio no lugar de erro.
 """
 
 from __future__ import annotations
 
+import re
+import threading
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
+from decimal import Decimal
+from email.utils import parsedate_to_datetime
 from typing import Self
 from urllib.parse import urlsplit
 
 import httpx
 
-from collector.settings import SourceConfig, SourcesConfig
+from collector.settings import PermissionStatus, SourceConfig, SourcesConfig
 
 MAX_ATTEMPTS = 3
-BACKOFF_BASE_SECONDS = 1.0
-MAX_RETRY_AFTER_SECONDS = 120.0
-DEFAULT_TIMEOUT_SECONDS = 20.0
+BACKOFF_BASE_SECONDS = Decimal(1)
+MAX_RETRY_AFTER_SECONDS = Decimal(120)
+DEFAULT_TIMEOUT_SECONDS = 20
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+_DIGITS = re.compile(r"[0-9]{1,12}")
+_ALLOWED_PORTS = frozenset({None, 443})
 
 
 class FetchError(Exception):
-    """Falha de coleta HTTP."""
+    """Falha de coleta HTTP. As mensagens nunca contêm a URL, só o id da fonte."""
 
 
 class SourceNotAllowedError(FetchError):
-    """Fonte desconhecida, desabilitada ou URL fora do domínio da fonte."""
+    """Fonte desconhecida, desabilitada, proibida ou URL fora do domínio da fonte."""
 
 
 def build_user_agent(contact: str) -> str:
@@ -39,25 +47,29 @@ def build_user_agent(contact: str) -> str:
 
 
 class HttpClient:
+    """Cliente síncrono. O intervalo mínimo por domínio é protegido por lock (uso por threads)."""
+
     def __init__(
         self,
         sources: SourcesConfig,
         contact: str,
         *,
         transport: httpx.BaseTransport | None = None,
-        sleep: Callable[[float], None] = time.sleep,
-        clock: Callable[[], float] = time.monotonic,
-        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        sleep: Callable[[Decimal], None] = time.sleep,  # type: ignore[assignment]
+        clock: Callable[[], Decimal | int | float] = time.monotonic,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._sources = sources
         self._sleep = sleep
         self._clock = clock
-        self._last_request: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._next_slot: dict[str, Decimal] = {}
+        self._user_agent = build_user_agent(contact)
         self._client = httpx.Client(
             transport=transport,
             timeout=timeout,
             follow_redirects=False,  # um redirecionamento poderia sair do domínio permitido
-            headers={"User-Agent": build_user_agent(contact)},
+            headers={"User-Agent": self._user_agent},
         )
 
     def close(self) -> None:
@@ -76,34 +88,68 @@ class HttpClient:
             raise SourceNotAllowedError(f"fonte desconhecida: {source_id}") from None
         if not source.enabled:
             raise SourceNotAllowedError(f"fonte desabilitada: {source_id}")
-        parts = urlsplit(url)
-        if parts.scheme != "https" or (parts.hostname or "").lower() != source.host:
+        if source.permission_status == PermissionStatus.PROIBIDA:
+            raise SourceNotAllowedError(f"fonte com permissão proibida: {source_id}")
+        if (
+            not isinstance(url, str)
+            or not url.isascii()
+            or any(c.isspace() or ord(c) < 32 for c in url)
+        ):
+            raise SourceNotAllowedError(f"URL malformada para {source_id}")
+        try:
+            parts = urlsplit(url)
+            port = parts.port
+        except ValueError:
+            raise SourceNotAllowedError(f"URL malformada para {source_id}") from None
+        # credenciais primeiro: assim nenhuma mensagem precisa citar netloc/userinfo
+        if "@" in parts.netloc:
+            raise SourceNotAllowedError(f"URL com credenciais é recusada para {source_id}")
+        if parts.scheme != "https":
+            raise SourceNotAllowedError(f"esquema diferente de https recusado para {source_id}")
+        hostname = (parts.hostname or "").lower()
+        if hostname != source.host:
             raise SourceNotAllowedError(
-                f"URL fora do domínio permitido para {source_id} ({source.host}): {parts.netloc!r}"
+                f"domínio fora do permitido para {source_id} (esperado {source.host}, "
+                f"recebido {hostname})"
             )
-        if parts.username or parts.password:
-            raise SourceNotAllowedError("URL com credenciais é recusada")
+        if port not in _ALLOWED_PORTS:
+            raise SourceNotAllowedError(f"porta diferente da padrão recusada para {source_id}")
         return source
 
     def _wait_interval(self, host: str, max_per_minute: int) -> None:
-        min_interval = 60.0 / max_per_minute
-        last = self._last_request.get(host)
-        if last is not None:
-            remaining = min_interval - (self._clock() - last)
-            if remaining > 0:
-                self._sleep(remaining)
-        self._last_request[host] = self._clock()
+        """Reserva o próximo horário livre do domínio sob lock e dorme fora dele."""
+        min_interval = Decimal(60) / Decimal(max_per_minute)
+        with self._lock:
+            now = Decimal(self._clock())
+            slot = now
+            last = self._next_slot.get(host)
+            if last is not None:
+                slot = max(now, last + min_interval)
+            self._next_slot[host] = slot
+        remaining = slot - now
+        if remaining > 0:
+            self._sleep(remaining)
 
     @staticmethod
-    def _retry_after(response: httpx.Response) -> float | None:
+    def _retry_after(response: httpx.Response) -> Decimal | None:
+        """Segundos pedidos pelo servidor. `None` se o cabeçalho não existe.
+
+        Lança `ValueError` se existe e não é interpretável (inteiro ou data HTTP).
+        """
         value = response.headers.get("Retry-After")
         if value is None:
             return None
+        value = value.strip()
+        if _DIGITS.fullmatch(value):
+            return Decimal(int(value))
         try:
-            seconds = float(value.strip())
-        except ValueError:
-            return None  # formato data HTTP não é usado; cai no recuo crescente
-        return seconds if seconds >= 0 else None
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            raise ValueError("Retry-After ilegível") from None
+        if when.tzinfo is None:
+            raise ValueError("Retry-After ilegível")
+        delta = (when - datetime.now(UTC)).total_seconds()
+        return max(Decimal(0), Decimal(delta))
 
     def get(
         self,
@@ -114,28 +160,40 @@ class HttpClient:
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         source = self._check_allowed(source_id, url)
+        # o User-Agent com o contato é do cliente; o adaptador não o troca
+        send_headers = {k: v for k, v in (headers or {}).items() if k.lower() != "user-agent"}
+        send_headers["User-Agent"] = self._user_agent
         last_reason = "sem tentativa"
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self._wait_interval(source.host, source.max_requests_per_minute)
             delay = BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
             try:
-                response = self._client.get(url, params=params, headers=headers)
+                response = self._client.get(url, params=params, headers=send_headers)
             except httpx.TransportError as exc:
                 last_reason = f"erro de transporte: {type(exc).__name__}"
+            except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+                raise FetchError(
+                    f"{source_id}: requisição inválida ({type(exc).__name__})"
+                ) from None
             else:
                 if 200 <= response.status_code < 300:
                     return response
                 if response.status_code not in _RETRY_STATUS:
                     raise FetchError(f"HTTP {response.status_code} de {source_id}")
                 last_reason = f"HTTP {response.status_code}"
-                retry_after = self._retry_after(response)
+                try:
+                    retry_after = self._retry_after(response)
+                except ValueError:
+                    raise FetchError(
+                        f"{source_id} enviou Retry-After ilegível; tentativa abandonada"
+                    ) from None
                 if retry_after is not None:
                     if retry_after > MAX_RETRY_AFTER_SECONDS:
                         raise FetchError(
                             f"{source_id} pediu espera de {retry_after:.0f}s (Retry-After); "
                             "tentativa abandonada"
                         )
-                    delay = retry_after
+                    delay = max(delay, retry_after)
             if attempt < MAX_ATTEMPTS:
                 self._sleep(delay)
         raise FetchError(f"{source_id} falhou após {MAX_ATTEMPTS} tentativas ({last_reason})")
