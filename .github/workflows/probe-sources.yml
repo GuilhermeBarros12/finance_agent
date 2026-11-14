@@ -1,0 +1,53 @@
+name: Teste de acesso às fontes
+
+# Experimento E4 do ADR 0002: descobrir se os sites das fontes aceitam uma
+# requisição vinda do GitHub Actions, antes de investir nos parsers.
+# Disparo só manual. Faz UMA requisição por fonte, não guarda o conteúdo e
+# não tenta de novo nem contorna bloqueio.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Uma requisição por fonte
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar as páginas que o coletor usaria
+        env:
+          UA: "finance-agent-probe/1.0 (+${{ github.server_url }}/${{ github.repository }})"
+        run: |
+          probe() {
+            name="$1"; url="$2"
+            body=$(mktemp)
+            code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 30 -A "$UA" "$url" || echo "erro")
+            size=$(wc -c < "$body")
+            challenge="não"
+            if grep -qiE 'Attention Required|cf-chl|captcha|Just a moment' "$body"; then
+              challenge="sim"
+            fi
+            rm -f "$body"
+            echo "| $name | \`$url\` | $code | $size | $challenge |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$name: HTTP $code, $size bytes, desafio/CAPTCHA: $challenge"
+            sleep 5
+          }
+          {
+            echo "## Resultado do teste de acesso"
+            echo
+            echo "| Fonte | URL | HTTP | Bytes | Desafio ou CAPTCHA |"
+            echo "| --- | --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          probe "Fundamentus" "https://www.fundamentus.com.br/resultado.php"
+          probe "StatusInvest" "https://statusinvest.com.br/acoes/petr4"
+          probe "brapi (sem token)" "https://brapi.dev/api/v2/stocks/quote?symbols=PETR4"
+          {
+            echo
+            echo "Leitura: \`200\` sem desafio indica que o coletor consegue ler a página a partir do GitHub Actions."
+            echo "\`403\` ou desafio indica bloqueio. A regra do projeto é não contornar: registre o resultado em"
+            echo "\`docs/pendencias.md\` (P-02) e decida a P-03."
+            echo "A brapi é consultada sem token, então \`401\` é resposta esperada e significa que o host está acessível."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -19,6 +19,7 @@
 - [ ] `bash scripts/ci/check_guardrails.sh`
 - [ ] Testes da parte alterada
 - [ ] Revisão pelo sub-agent `revisor-tarefa` (veredito: )
+- [ ] `docs/tarefas/Txx.md` criado; `docs/data-dictionary.md` e `docs/api.md` atualizados quando se aplica
 
 ## Pendências para o autor
 

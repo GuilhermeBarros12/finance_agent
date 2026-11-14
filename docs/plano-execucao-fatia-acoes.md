@@ -4,12 +4,26 @@ Este documento é o roteiro para construir a primeira fatia do Agente de Investi
 
 ## 1. Como usar este plano
 
+Este plano é executado em sequência por um orquestrador, que delega cada tarefa a sub-agents (ADR 0002). O comando `/executar-plano` percorre todas as tarefas liberadas. O comando `/tarefa T10` executa uma só.
+
 1. Leia a seção 2 (contexto) e a seção 3 (regras) inteiras antes de qualquer tarefa.
-2. Execute **uma tarefa por sessão**. Cada tarefa tem um identificador (`T01`, `T02`, ...).
-3. Só comece uma tarefa quando todas as tarefas do campo **Depende de** estiverem concluídas.
-4. Uma tarefa só está concluída quando todos os itens de **Pronto quando** forem verdadeiros. Rode os comandos indicados e mostre a saída.
-5. Tarefas marcadas **HUMANO** exigem uma ação do autor do projeto (painel de um serviço, escolha pessoal, segredo). O agente prepara o que puder e para.
-6. Se algo no plano contradisser o que você encontrar no repositório ou numa fonte externa, **pare e relate**. Não improvise uma decisão de arquitetura.
+2. O estado de cada tarefa está em `docs/status-tarefas.md`, **no branch `fatia-acoes`**. Esse arquivo é a fonte da verdade.
+3. Só comece uma tarefa quando todas as tarefas do campo **Depende de** estiverem `concluída`.
+4. Uma tarefa só está concluída quando todos os itens de **Pronto quando** forem verdadeiros, o revisor aprovar e a CI passar.
+5. Tarefas marcadas **HUMANO** ficam fora da execução autônoma. Elas estão em `docs/pendencias.md`.
+6. Se uma tarefa travar, registre em `docs/bloqueios.md`, marque como `bloqueada` e passe para a próxima tarefa liberada. Não pare a execução inteira e não improvise uma decisão de arquitetura.
+
+### Fluxo de branches
+
+```text
+main            protegida; só o autor faz merge
+  `-- fatia-acoes        branch de integração da leva
+        |-- tarefa/T05   um branch por tarefa, criado a partir de fatia-acoes
+        |-- tarefa/T06
+        `-- ...
+```
+
+Cada tarefa vira um pull request de `tarefa/Txx` para `fatia-acoes`. O orquestrador faz o merge quando a CI (`CI ok`) e o revisor aprovam. No final, a tarefa T25 abre um único pull request de `fatia-acoes` para `main`, que o autor revisa.
 
 ## 2. Contexto do projeto
 
@@ -17,8 +31,9 @@ O Agente de Investimentos é uma aplicação web pessoal. Ela coleta indicadores
 
 Documentos de referência, em ordem de autoridade:
 
-1. `docs/adr/0001-primeira-fatia-acoes.md` — decisões aceitas (D1 a D21). **Prevalece sobre o README.**
-2. `README.md` — especificação completa. Use as seções citadas em cada tarefa.
+1. `docs/adr/0002-execucao-autonoma.md` — decisões E1 a E20, sobre a execução autônoma e o front completo. **Prevalece sobre o ADR 0001.**
+2. `docs/adr/0001-primeira-fatia-acoes.md` — decisões D1 a D21. **Prevalece sobre o README.**
+3. `README.md` — especificação completa. Use as seções citadas em cada tarefa.
 
 Resumo da fatia:
 
@@ -30,11 +45,13 @@ Resumo da fatia:
 | Coleta | Python, uma vez por dia útil, via GitHub Actions |
 | Banco | Postgres no Supabase |
 | Backend | Supabase Edge Functions (Deno, TypeScript) |
-| Frontend | React, TypeScript e Vite |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, shadcn/ui, React Router e TanStack Query |
 | LLM | Groq, só para classificar a intenção da pergunta |
 | Usuários | Um (o autor), com login Google |
 
 Fora da fatia: FIIs, ETFs, Tesouro, PDF, Realtime, fallback de LLM, multiusuário, histórico de indicadores, RIs.
+
+Fora da execução autônoma (ficam com o autor, ver `docs/pendencias.md`): projeto Supabase hospedado, segredos, deploy, coleta real, calibragem das tolerâncias, avaliação de modelos e conferência manual. O alvo da leva é o sistema inteiro funcionando em ambiente local, com Supabase local, dados sintéticos e `MOCK_LLM=true` (ADR 0002, E2).
 
 ### Vocabulário
 
@@ -72,51 +89,78 @@ Regras de segurança:
 
 Regras de processo:
 
-- Não escreva parser de Fundamentus ou StatusInvest antes de a T01 estar concluída e a fonte estar marcada como permitida.
+- Não escreva parser de Fundamentus ou StatusInvest antes de a fonte estar com `enabled: true` em `config/sources.yaml` **e** de existir `docs/source-methodologies/estrutura-paginas.md`. Sem esse documento a estrutura da página seria inventada.
 - Não crie commits vazios para manter o cron ativo (README 14.5).
 - Não inclua nesta fatia nada da lista "fora da fatia".
 - Não marque como feito o que não foi executado. Se um teste falhar, relate a falha com a saída.
-- Trabalhe num branch próprio por tarefa (`tarefa/T10`) e entregue por pull request para `main`. Não faça merge: o autor aprova.
-- Registre o andamento em `docs/status-tarefas.md`.
+- Um branch por tarefa (`tarefa/T10`), criado a partir de `fatia-acoes`, entregue por pull request para `fatia-acoes`. Ninguém faz merge em `main` além do autor.
+- Mensagens de commit começam pelo ID da tarefa: `T10: ...`.
 - Antes de cada commit, rode `bash scripts/ci/check_guardrails.sh`. A CI (`.github/workflows/ci.yml`) roda a mesma verificação e os testes em todo pull request.
+- Não desative teste, não pule teste e não silencie lint para a CI passar.
+
+Regras de documentação (ADR 0002, E19). Fazem parte do **Pronto quando** de toda tarefa de código:
+
+- Crie `docs/tarefas/Txx.md` seguindo o modelo de `docs/tarefas/README.md`: o que foi feito, por que foi feito assim, o que foi descartado, arquivos principais, como conferir e limitações.
+- Se a tarefa criar ou alterar tabela, coluna, função SQL ou política, atualize `docs/data-dictionary.md`.
+- Se a tarefa criar ou alterar endpoint, atualize `docs/api.md` com entrada, saída, erros e um exemplo.
+- Se a tarefa mudar como as partes se encaixam, atualize `docs/architecture/visao-geral.md`.
+- Crie esses arquivos na primeira tarefa que precisar deles.
+
+Regras de interface (ADR 0002, E8 a E10, E18). Valem para as tarefas T21a a T21f:
+
+- Antes de escrever qualquer tela, leia `.claude/skills/frontend-design/SKILL.md` e `docs/design.md`.
+- Tailwind CSS e componentes shadcn/ui. Os tokens de cor, tipografia e espaçamento vêm de `docs/design.md`; não invente valores por tela.
+- Estrutura por funcionalidade em `frontend/src/features/<nome>/`, cada uma com `components/`, `hooks/` e `api.ts`. Componentes reutilizáveis em `frontend/src/components/`.
+- React Router para rotas. TanStack Query para leitura e escrita de dados. Sem biblioteca de estado global.
+- Todo texto visível em português do Brasil. Layout utilizável a partir de 360 px de largura. Tema claro e escuro seguindo o sistema.
+- Toda tela trata os estados de carregamento, vazio e erro.
 
 ## 4. Visão geral das tarefas
 
-| ID | Tarefa | Quem | Depende de |
+"Autônoma" indica se a tarefa entra na execução sem supervisão.
+
+| ID | Tarefa | Autônoma | Depende de |
 | --- | --- | --- | --- |
-| T01 | Revisar termos e `robots.txt` das fontes | Agente + HUMANO | — |
-| T02 | Licença MIT e proteção de segredos | Agente + HUMANO | — |
-| T03 | Atualizar o README com as decisões | Agente | — |
-| T04 | Escolher o universo de tickers | HUMANO | — |
-| T05 | Inicializar a estrutura do repositório | Agente | T02 |
-| T06 | Schema único de observação e validação | Agente | T05 |
-| T07 | Homologar a metodologia dos campos | Agente + HUMANO | T01 |
-| T08 | Migrations do banco | Agente | T05, T06 |
-| T09 | RPC de publicação e papel dedicado | Agente | T08 |
-| T10 | Base do coletor e normalização | Agente | T06 |
-| T11 | Adaptador brapi | Agente | T10 |
-| T12 | Adaptador Fundamentus | Agente | T01, T07, T10 |
-| T13 | Adaptador StatusInvest | Agente | T01, T07, T10 |
-| T14 | Validação por campo | Agente | T07, T10 |
-| T15 | Pipeline, CLI e publicação | Agente | T09, T11, T12, T13, T14 |
-| T16 | Workflow diário e alerta de idade | Agente + HUMANO | T15, T22a |
-| T17 | Experimento de calibragem das tolerâncias | Agente + HUMANO | T16 |
-| T18 | Edge Function do agente (modo determinístico) | Agente | T08, T06 |
-| T19 | Classificador de intenção com LLM | Agente | T18 |
-| T20 | Avaliação dos modelos | Agente + HUMANO | T19 |
-| T21 | Frontend mínimo | Agente | T18 |
-| T22a | Criar o projeto Supabase hospedado | HUMANO | T08, T09 |
-| T22b | Publicar funções e frontend | Agente + HUMANO | T19, T21, T22a |
-| T23 | Exportação periódica das conversas | Agente | T22a |
-| T24 | Conferência manual de aceite | HUMANO | T17, T22b |
+| T01 | Revisar termos e `robots.txt` das fontes | concluída | — |
+| T02 | Licença MIT e proteção de segredos | sim | — |
+| T03 | Atualizar o README com as decisões | sim | — |
+| T04 | Escolher o universo de tickers | concluída | — |
+| T05 | Inicializar a estrutura do repositório | sim | T02 |
+| T06 | Schema único de observação e validação | sim | T05 |
+| T07 | Metodologia provisória dos campos | sim | T05 |
+| T08 | Migrations do banco | sim | T05, T06 |
+| T09 | RPC de publicação e papel dedicado | sim | T08 |
+| T10 | Base do coletor e normalização | sim | T06 |
+| T11 | Adaptador brapi | sim | T10 |
+| T12 | Adaptador Fundamentus | bloqueada (P-01) | T07, T10 |
+| T13 | Adaptador StatusInvest | bloqueada (P-01) | T07, T10 |
+| T14 | Validação por campo | sim | T07, T10 |
+| T15 | Pipeline, CLI e publicação | sim | T09, T11, T14 |
+| T16 | Workflow diário e alerta de idade | não (HUMANO) | T15, T22a |
+| T17 | Experimento de calibragem das tolerâncias | não (HUMANO) | T16 |
+| T18 | Edge Function do agente (modo determinístico) | sim | T06, T08 |
+| T18b | Edge Function de catálogo e estado dos dados | sim | T18 |
+| T19 | Classificador de intenção com LLM | sim | T18 |
+| T20 | Avaliação dos modelos | não (HUMANO) | T19 |
+| T21a | Fundação do front e guia de design | sim | T05 |
+| T21b | Login e conversas | sim | T21a, T08 |
+| T21c | Chat, tabela de indicadores e seletor manual | sim | T21b, T18, T18b |
+| T21d | Carteira | sim | T21c |
+| T21e | Estado dos dados, exportação e aviso legal | sim | T21c |
+| T21f | Testes ponta a ponta e capturas de tela | sim | T19, T21d, T21e |
+| T22a | Criar o projeto Supabase hospedado | não (HUMANO) | T08, T09 |
+| T22b | Publicar funções e frontend | não (HUMANO) | T19, T21f, T22a |
+| T23 | Exportação das conversas | absorvida pela T21e | — |
+| T24 | Conferência manual de aceite | não (HUMANO) | T17, T22b |
+| T25 | Relatório final e pull request para `main` | sim | todas as autônomas |
 
-Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloqueia, então comece por ela.
-
----
+Ordem sugerida para a execução autônoma: T02, T03, T05, T06, T07, T08, T10, T09, T11, T14, T15, T18, T18b, T19, T21a, T21b, T21c, T21d, T21e, T21f, T25. Quando uma tarefa estiver bloqueada, siga para a próxima da lista cujas dependências estejam concluídas.
 
 ## 5. Fase 0 — Preparação
 
 ### T01 — Revisar termos e `robots.txt` das fontes
+
+> **Concluída.** Relatório em `docs/source-methodologies/permissoes.md`. O autor habilitou as três fontes em 2026-11-14. Fundamentus e StatusInvest continuam com permissão `indefinida`, por conta e risco do autor.
 
 - **Quem:** agente pesquisa e redige; HUMANO decide.
 - **Objetivo:** saber se a coleta automatizada de Fundamentus, StatusInvest e brapi é permitida, antes de escrever qualquer parser (decisão D3).
@@ -134,16 +178,17 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 
 ### T02 — Licença MIT e proteção de segredos
 
-- **Quem:** agente + HUMANO.
+- **Quem:** agente.
 - **Objetivo:** cumprir as condições para o repositório ser público (D14, D18).
 - **Referências:** README 12.7 e 24.
 - **Passos:**
-  1. Crie `LICENSE` com o texto oficial da licença MIT, ano 2026 e titular "Guilherme". Confirme o nome do titular com o autor.
-  2. Crie `.gitignore` com o conteúdo da seção 12.7 do README.
+  1. Crie `LICENSE` com o texto oficial da licença MIT, ano 2026 e titular "Guilherme" (autor informado na seção 24 do README).
+  2. Crie `.gitignore` com o conteúdo da seção 12.7 do README. Acrescente `test-results/` e `playwright-report/`.
   3. No `README.md`, troque o badge "MIT (proposta)" por "MIT" e ajuste a seção 24 para dizer que a licença foi confirmada.
-  4. Crie `SECURITY.md` com um canal de contato privado. Peça o canal ao autor; não invente um e-mail.
-- **HUMANO:** nas configurações do repositório no GitHub, ativar *Secret scanning* e *Push protection*.
-- **Pronto quando:** `LICENSE` e `.gitignore` existem; badge atualizado; o autor confirma que o secret scanning está ativo.
+  4. Crie `SECURITY.md`. O canal de contato é o recurso "Report a vulnerability" da aba Security do repositório no GitHub. Não invente um e-mail.
+- **Já feito pelo autor:** Secret Protection e Push Protection estão ativos no repositório.
+- **Pronto quando:** `LICENSE`, `.gitignore` e `SECURITY.md` existem; o badge está atualizado; `bash scripts/ci/check_guardrails.sh` passa.
+- **Pendência do autor (não bloqueia):** P-09 em `docs/pendencias.md`.
 
 ### T03 — Atualizar o README com as decisões
 
@@ -157,25 +202,15 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
   5. Seção 12.2 e 14.2: a credencial do coletor é um papel de banco dedicado, não `SUPABASE_SECRET_KEY` (D13).
   6. Seção 21: acrescente a fatia de ações como primeira entrega do curto prazo e a ordem das fatias seguintes.
   7. Seção 3: marque login multiusuário como "usuário único na primeira fatia" (D7).
-- **Pronto quando:** uma busca por "Gemini" no README não encontra nenhuma frase que o trate como fallback decidido; os sete pontos estão alterados.
+  8. Seção 2: acrescente também uma linha apontando para `docs/adr/0002-execucao-autonoma.md`.
+  9. Seção 1 ("O que o agente não é"): registre que a aplicação tem uma carteira que guarda só os símbolos das ações, sem quantidade nem valor, e que isso não a torna um gestor de carteira (ADR 0002, E14 a E16).
+  10. Seção 5: acrescente Tailwind CSS, shadcn/ui, React Router e TanStack Query à tabela da stack (ADR 0002, E8 e E18).
+- **Pronto quando:** uma busca por "Gemini" no README não encontra nenhuma frase que o trate como fallback decidido; os dez pontos estão alterados.
 - **Não fazer:** não reescreva seções que não estão na lista. Não marque nenhum checkbox da seção 19.3.
 
 ### T04 — Escolher o universo de tickers
 
-- **Quem:** HUMANO.
-- **Objetivo:** definir de 10 a 20 ações para a fatia (D9).
-- **Passos:** o autor lista os tickers. O agente grava `config/universe.yaml`:
-
-  ```yaml
-  version: "fatia-acoes-1"
-  stocks:
-    - PETR4
-    - VALE3
-    # ... demais tickers escolhidos pelo autor
-  ```
-
-- **Sugestão para o autor:** inclua empresas de setores diferentes e pelo menos um banco. Bancos costumam ter indicadores calculados de forma diferente entre fontes, o que ajuda a exercitar a detecção de divergência (premissa em aberto do ADR).
-- **Pronto quando:** o arquivo existe com 10 a 20 tickers.
+> **Concluída.** O autor aprovou 12 ações (ADR 0002, E6). O arquivo `config/universe.yaml` já existe. Não o altere.
 
 ---
 
@@ -215,21 +250,37 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
   6. Na CI, um passo roda o export e falha se `git diff` mostrar diferença em `schemas/` (schema desatualizado).
 - **Pronto quando:** os dois conjuntos de testes passam sobre os mesmos exemplos; a CI detecta schema desatualizado.
 
-### T07 — Homologar a metodologia dos campos
+### T07 — Metodologia provisória dos campos
 
-- **Quem:** agente pesquisa; HUMANO aprova. **Depende de:** T01.
-- **Objetivo:** documentar, campo a campo, se Fundamentus e StatusInvest medem a mesma coisa (D2).
+- **Quem:** agente. **Depende de:** T05.
+- **Objetivo:** criar o arquivo que diz ao motor de validação se um campo é comparável entre as duas fontes (D2; ADR 0002, E7).
+- **Contexto:** os sites das fontes respondem `403` ao agente, então a metodologia real ainda não foi lida. O arquivo nasce com o veredito mais conservador, e o autor o preenche depois (P-04).
 - **Referências:** README 7.3 e 6.1.
-- **Passos:** para cada um dos quatro indicadores (`price_to_book`, `price_to_earnings`, `dividend_yield`, `roe`) e para a cotação, registre em `docs/source-methodologies/acoes.md`:
-  1. Como cada fonte define o campo: fórmula, janela (por exemplo últimos doze meses), base contábil (patrimônio final ou médio), unidade.
-  2. De onde cada fonte tira o dado (origem primária, por exemplo demonstrações enviadas à CVM), quando a fonte informar.
-  3. Se a fonte informa a data-base do indicador.
-  4. Um veredito por campo: `comparável`, `não comparável` ou `metadados insuficientes`.
-  5. Um identificador de metodologia por fonte e campo (por exemplo `dy_ttm_fundamentus`), para preencher `methodology_id`.
-- **Consequência por veredito:** `comparável` permite `verified` e `divergent`. `não comparável` produz `incomparable`. `metadados insuficientes` também produz `incomparable`, com motivo `unknown_metadata`.
-- **HUMANO:** aprovar o documento.
-- **Pronto quando:** os cinco campos têm veredito e o autor aprovou.
-- **Não fazer:** não declare `comparável` porque os números de um dia pareceram próximos.
+- **Passos:**
+  1. Crie `config/methodologies.yaml`:
+
+     ```yaml
+     version: "provisoria-1"
+     # verdict: comparable | not_comparable | insufficient_metadata
+     metrics:
+       price_to_book:
+         verdict: insufficient_metadata
+         sources:
+           fundamentus: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+           statusinvest: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+         notes: "Metodologia não lida. Preencher conforme docs/pendencias.md, P-04."
+       # repetir para price_to_earnings, dividend_yield e roe
+       quote_price:
+         verdict: single_source
+         sources:
+           brapi: { methodology_id: brapi_quote, formula: null, window: null, basis: null, reference_date_available: true }
+         notes: "Só a brapi fornece cotação nesta fatia."
+     ```
+
+  2. Crie o modelo Pydantic que carrega e valida esse arquivo em `collector/src/collector/settings.py` (ou num módulo vizinho). Um veredito desconhecido deve gerar erro.
+  3. Crie `docs/source-methodologies/acoes.md` explicando: o que cada veredito significa, a consequência de cada um (`comparable` permite `verified` e `divergent`; os outros dois produzem `incomparable`), e o roteiro para o autor preencher (que páginas abrir e o que anotar por campo: fórmula, janela, base contábil, data-base).
+- **Pronto quando:** o arquivo carrega sem erro; um teste confirma que um veredito inválido é rejeitado; o documento existe.
+- **Não fazer:** não marque nenhum campo como `comparable`. Só o autor faz isso.
 
 ---
 
@@ -241,10 +292,10 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 - **Referências:** README 8.1, 8.2, 8.3.
 - **Passos:** crie migrations em `supabase/migrations/`, em três arquivos.
   1. **Dados de mercado** (compartilhados): `assets`, `data_sources`, `collection_runs`, `snapshots`, `observations`, `field_validations`, `active_snapshot`. Use `uuid` para chaves, `timestamptz` para eventos e `numeric` para valores. Aplique a restrição `unique (snapshot_id, asset_id, metric, source_id)` em `observations`. `snapshots` é imutável depois de publicado: crie um trigger que rejeita `update` e `delete` em linhas publicadas, exceto pela rotina de retenção.
-  2. **Dados privados:** `allowed_users` (uma linha por usuário autorizado), `conversations`, `messages`, `request_runs`, `llm_usage` (contador global por dia e provedor). Aplique as restrições do README 8.2: `unique (id, user_id)` em `conversations`, FK composta `(conversation_id, user_id)` em `messages`, `unique (conversation_id, sequence_no)`, `unique (user_id, request_id)`. `messages` tem `content_version` (inteiro) e `payload` (`jsonb`) para a resposta estruturada (D21).
-  3. **RLS e grants:** habilite RLS em todas as tabelas. Tabelas de mercado: sem acesso para `anon` e `authenticated`; a leitura passa pela Edge Function. Tabelas privadas: o dono autorizado lê as suas linhas; `conversations` aceita insert, update de título e delete do dono; `messages`, `request_runs` e `llm_usage` não aceitam escrita do cliente. Use o padrão do exemplo do README 8.3, trocando `beta_users` por `allowed_users`.
+  2. **Dados privados:** `allowed_users` (uma linha por usuário autorizado), `conversations`, `messages`, `request_runs`, `llm_usage` (contador global por dia e provedor) e `portfolio_items` (a carteira: `user_id`, `asset_id`, `created_at`, com `unique (user_id, asset_id)` e FK para `assets`; sem quantidade, preço ou valor — ADR 0002, E14 a E16). Aplique as restrições do README 8.2: `unique (id, user_id)` em `conversations`, FK composta `(conversation_id, user_id)` em `messages`, `unique (conversation_id, sequence_no)`, `unique (user_id, request_id)`. `messages` tem `content_version` (inteiro) e `payload` (`jsonb`) para a resposta estruturada (D21).
+  3. **RLS e grants:** habilite RLS em todas as tabelas. Tabelas de mercado: sem acesso para `anon` e `authenticated`; a leitura passa pela Edge Function. Tabelas privadas: o dono autorizado lê as suas linhas; `conversations` aceita insert, update de título e delete do dono; `portfolio_items` aceita select, insert e delete do dono; `messages`, `request_runs` e `llm_usage` não aceitam escrita do cliente. Use o padrão do exemplo do README 8.3, trocando `beta_users` por `allowed_users`.
   4. `supabase/seed.sql` com dados sintéticos: dois ativos fictícios, um snapshot com um campo `verified`, um `divergent`, um `missing` e um `incomparable`.
-- **Pronto quando:** `supabase db reset` aplica tudo sem erro; os testes pgTAP em `supabase/tests/database/` passam e cobrem: um usuário não autorizado não lê nada; o cliente não consegue inserir mensagem com `role = 'assistant'`; `anon` não lê nenhuma tabela.
+- **Pronto quando:** `supabase db reset` aplica tudo sem erro; os testes pgTAP em `supabase/tests/database/` passam e cobrem: um usuário não autorizado não lê nada; o cliente não consegue inserir mensagem com `role = 'assistant'`; `anon` não lê nenhuma tabela; um usuário não lê nem apaga itens da carteira de outro; a carteira recusa um ativo que não existe em `assets`. `docs/data-dictionary.md` descreve todas as tabelas e colunas criadas.
 - **Não fazer:** não crie `relatorios_pdf`, bucket de Storage nem `usage_counters` por usuário.
 
 ### T09 — RPC de publicação e papel dedicado
@@ -288,20 +339,23 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 
 ### T12 — Adaptador Fundamentus
 
-- **Quem:** agente. **Depende de:** T01 (fonte permitida), T07, T10.
-- **Referências:** README 6.1; `fundamentus-stocks` (seção 25).
+- **Quem:** agente. **Depende de:** T07, T10.
+- **Bloqueada** até existir `docs/source-methodologies/estrutura-paginas.md` (pendência P-01). Sem esse documento, não comece: a estrutura da tabela seria inventada.
+- **Referências:** README 6.1; `fundamentus-stocks` (seção 25); `docs/source-methodologies/estrutura-paginas.md`.
 - **Passos:**
   1. Confira em `config/sources.yaml` que a fonte está `enabled: true`. Se não estiver, pare.
   2. A tabela de resultados traz todas as ações numa página. Baixe **uma vez por lote** e filtre os tickers do universo (README 14.4, item 5).
   3. Localize as colunas pelo **texto do cabeçalho**, não pela posição. Se um cabeçalho esperado não existir, lance um erro de parser; não devolva lista vazia.
-  4. Extraia P/VP, P/L, DY e ROE. Preencha `methodology_id` com os identificadores da T07 e `raw_value` com o texto original.
+  4. Extraia P/VP, P/L, DY e ROE. Preencha `methodology_id` com o valor de `config/methodologies.yaml` e `raw_value` com o texto original.
+  4b. Registre o adaptador na lista de fontes do pipeline (T15).
   5. Se a fonte não informar data-base do indicador, `reference_at` fica nulo. Não use a data da coleta no lugar.
   6. Fixture sintética: um HTML escrito à mão com a mesma estrutura de tabela e tickers inventados.
 - **Pronto quando:** testes cobrem: extração correta; cabeçalho ausente gera erro; ticker do universo ausente na tabela gera falha registrada para aquele ativo, sem derrubar os outros; página de erro com HTTP 200 é detectada.
 
 ### T13 — Adaptador StatusInvest
 
-- **Quem:** agente. **Depende de:** T01 (fonte permitida), T07, T10.
+- **Quem:** agente. **Depende de:** T07, T10.
+- **Bloqueada** até existir `docs/source-methodologies/estrutura-paginas.md` (pendência P-01).
 - **Passos:** os mesmos princípios da T12, com estas diferenças:
   1. A fonte tende a exigir uma página por ativo. Use o intervalo entre requisições definido em `config/sources.yaml`.
   2. Registre em `source_url` a página do ativo (por exemplo `https://statusinvest.com.br/acoes/petr4`).
@@ -313,7 +367,7 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 - **Quem:** agente. **Depende de:** T07, T10.
 - **Referências:** README 7.3 a 7.6.
 - **Passos:**
-  1. `collector/src/collector/validation/comparability.py`: recebe duas observações do mesmo ativo e métrica e decide se são comparáveis, com base na tabela da T07, na unidade e nas datas. Devolve um motivo quando não são.
+  1. `collector/src/collector/validation/comparability.py`: recebe duas observações do mesmo ativo e métrica e decide se são comparáveis, com base no veredito de `config/methodologies.yaml` (T07), na unidade e nas datas. Devolve um motivo quando não são. Com veredito `insufficient_metadata`, o motivo é `unknown_metadata`. Os testes usam um arquivo de metodologia de teste com veredito `comparable`, para exercitar `verified` e `divergent`.
   2. `collector/src/collector/validation/tolerance.py`: a função `within_tolerance` do README 7.4, com `limite = max(atol, rtol * max(|a|, |b|))`.
   3. `collector/src/collector/validation/engine.py`: para cada par (ativo, métrica), produz uma `FieldValidation`:
      - nenhuma observação utilizável: `missing`;
@@ -329,8 +383,9 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 
 ### T15 — Pipeline, CLI e publicação
 
-- **Quem:** agente. **Depende de:** T09, T11, T12, T13, T14.
+- **Quem:** agente. **Depende de:** T09, T11, T14.
 - **Referências:** README 14.1 e 14.4.
+- **Sobre as fontes:** o pipeline recebe uma lista de adaptadores registrados. Nesta tarefa só a brapi existe de verdade. T12 e T13 se registram depois, sem mudar o pipeline. Os testes de integração usam dois adaptadores falsos, definidos dentro de `collector/tests/`, para simular duas fontes de indicadores.
 - **Passos:**
   1. `collector/src/collector/pipeline.py`, na ordem: validar configuração; criar `run_id` e a data lógica em `America/Sao_Paulo`; recusar se já houver lote concluído no dia (salvo `--force`); coletar cada fonte; normalizar; validar; gravar em staging; chamar `publish_snapshot`.
   2. **Regra do ticker que falha (D12):** se uma fonte falhar para um ativo, os campos daquela fonte ficam sem observação. O motor então produz `missing` ou `single_source`, conforme o que sobrar. Nunca copie observação de um snapshot anterior.
@@ -417,6 +472,37 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 - **Leitura do banco:** use o cliente com o JWT do usuário para dados privados. Para tabelas de mercado e escritas de sistema, use o cliente administrativo, sempre depois da autenticação e da checagem de dono (README 8.4).
 - **Pronto quando:** testes Deno cobrem: sem JWT (`401`); usuário não autorizado (`403`); conversa de outro dono (`404`); repetição do mesmo `request_id` não duplica mensagens; mesmo `request_id` com corpo diferente (`409`); ativo fora do universo (`422`); resposta com campo `divergent` tem `selected_observation_id` nulo e as duas observações na evidência.
 
+### T18b — Edge Function de catálogo e estado dos dados
+
+- **Quem:** agente. **Depende de:** T18.
+- **Objetivo:** dar ao front o que ele precisa para montar o seletor, a carteira e o painel de estado dos dados. As tabelas de mercado não são legíveis pelo cliente, então a leitura passa por esta função.
+- **Contrato de `GET /catalog`** (exige usuário autorizado):
+
+  ```json
+  {
+    "universe_version": "fatia-acoes-1",
+    "assets": [{ "asset_id": "PETR4", "name": "...", "reference_url": "https://statusinvest.com.br/acoes/petr4" }],
+    "metrics": [{ "metric": "price_to_book", "label": "P/VP", "unit": "ratio" }],
+    "snapshot": {
+      "snapshot_id": "...",
+      "collected_at": "...",
+      "freshness": "fresh",
+      "assets_total": 12,
+      "assets_updated": 11,
+      "failures": [{ "asset_id": "VALE3", "source_id": "statusinvest", "reason": "..." }],
+      "status_counts": { "verified": 0, "divergent": 0, "single_source": 12, "incomparable": 36, "missing": 4, "invalid": 0 }
+    }
+  }
+  ```
+
+  Sem snapshot publicado, `snapshot` é `null` e a resposta continua `200`.
+- **Passos:**
+  1. Crie `supabase/functions/catalog/index.ts`, reaproveitando a autenticação e a autorização de `_shared/`.
+  2. O link de referência é montado no servidor a partir do cadastro do ativo (README 7.8).
+  3. `failures` é um resumo sem dados sensíveis: sem URL com token, sem HTML.
+  4. Documente o endpoint em `docs/api.md`.
+- **Pronto quando:** testes Deno cobrem: sem JWT (`401`); usuário não autorizado (`403`); resposta com snapshot; resposta sem snapshot; `status_counts` bate com o seed.
+
 ### T19 — Classificador de intenção com LLM
 
 - **Quem:** agente. **Depende de:** T18.
@@ -450,30 +536,97 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 - **HUMANO:** decidir se o modelo é adotado e se outro candidato será testado. O Gemini só entra se passar nesta mesma bateria.
 - **Pronto quando:** o relatório existe com os números medidos e a decisão do autor.
 
-### T21 — Frontend mínimo
+### T21a — Fundação do front e guia de design
 
-- **Quem:** agente. **Depende de:** T18.
-- **Referências:** README 8.5, 15.2, 15.3, 18.1. Decisões D17, D19.
-- **Telas:**
-  1. **Login:** botão "Entrar com Google" (Supabase Auth). Usuário não autorizado vê uma mensagem clara.
-  2. **Conversas:** lista ordenada por atualização, criar, renomear, excluir.
-  3. **Chat:** mensagens paginadas, lidas do banco. Caixa de pergunta. Um botão para abrir o seletor manual.
-  4. **Seletor manual:** lista de tickers do universo e de indicadores, com múltipla escolha. Abre sozinho quando o backend responde `needs_selection`.
-- **Renderização da resposta, a partir de `payload`:**
-  - Cabeçalho com a data do snapshot, o estado de atualização e o manifesto ("19 de 20 ativos atualizados").
-  - Uma tabela por indicador. Cada célula mostra o valor, o estado e um link para a fonte.
-  - `verified`: valor do Fundamentus em destaque; o do StatusInvest aparece ao expandir.
-  - `divergent`: os dois valores lado a lado, a diferença e o limite. Nenhum em destaque.
-  - `single_source`: o valor, com o aviso "não verificado entre fontes".
-  - `incomparable`: os valores e o motivo.
-  - `missing`: "Não disponível", nunca zero.
-  - `stale` e `expired` aparecem como aviso visível no cabeçalho.
-- **Regras:**
-  - O navegador formata os decimais (string) para exibição, mas não calcula.
-  - O `request_id` é gerado com `crypto.randomUUID()` e **reutilizado** quando a mesma pergunta for reenviada.
-  - Sem Realtime e sem atualização otimista: depois da resposta, a interface relê as mensagens do banco.
-  - Não renderize HTML vindo do backend. Crie `frontend/public/_headers` com uma política de segurança de conteúdo.
-- **Pronto quando:** testes Vitest cobrem a renderização dos sete estados; um teste Playwright, com o Supabase local e o seed, faz login com usuário de teste, envia uma seleção, recarrega a página e encontra a conversa.
+- **Quem:** agente. **Depende de:** T05.
+- **Referências:** `.claude/skills/frontend-design/SKILL.md`; regras de interface da seção 3; ADR 0002, E8, E10 e E18.
+- **Passos:**
+  1. Leia a skill `frontend-design` inteira e siga o processo dela em duas passadas (plano, depois construção).
+  2. Escreva `docs/design.md`: o assunto e o público (uma pessoa conferindo indicadores de ações com atenção à origem do dado); paleta com 4 a 6 cores nomeadas em hexadecimal, para tema claro e escuro; tipografia e escala; espaçamento; e a **representação visual de cada estado** de validação (`verified`, `divergent`, `single_source`, `incomparable`, `missing`, `invalid`) e de atualização (`fresh`, `stale`, `expired`). Cada estado precisa ser distinguível sem depender só de cor (ícone ou texto junto).
+  3. Configure Tailwind CSS com os tokens de `docs/design.md` e instale o shadcn/ui. Adicione só os componentes que as telas usam.
+  4. Configure React Router com as rotas: `/entrar`, `/` (conversas), `/conversas/:id`, `/carteira`, `/dados`, `/aviso-legal`. Rotas privadas redirecionam para `/entrar`.
+  5. Configure TanStack Query e o cliente Supabase em `frontend/src/lib/supabase.ts`.
+  6. Crie o layout base: navegação entre Conversas, Carteira e Dados, que funcione em 360 px de largura, e o alternador de tema seguindo o sistema.
+  7. Crie os componentes compartilhados de estado: carregando, vazio e erro.
+  8. Crie `frontend/public/_headers` com uma política de segurança de conteúdo e `frontend/public/_redirects` para as rotas.
+- **Pronto quando:** `npm run lint`, `npm run typecheck`, `npm test` e `npm run build` passam em `frontend/`; `docs/design.md` existe e cobre todos os estados; há um teste de que rota privada sem sessão redireciona para `/entrar`.
+- **Não fazer:** não crie telas de funcionalidade aqui. Não use cor como único sinal de um estado.
+
+### T21b — Login e conversas
+
+- **Quem:** agente. **Depende de:** T21a, T08.
+- **Referências:** README 8.5, 15.2, 15.3.
+- **Pastas:** `frontend/src/features/auth/` e `frontend/src/features/conversations/`.
+- **Passos:**
+  1. Tela `/entrar`: botão "Entrar com Google" (Supabase Auth). Usuário que não está em `allowed_users` vê uma mensagem clara de acesso não autorizado e um botão para sair.
+  2. Tela `/`: lista de conversas ordenada por atualização, com criar, renomear e excluir. Excluir pede confirmação.
+  3. As operações usam supabase-js com o JWT do usuário e TanStack Query. Depois de cada escrita, a lista é relida do banco (sem atualização otimista, D17).
+  4. Estados de carregamento, lista vazia e erro.
+- **Pronto quando:** testes Vitest cobrem: lista vazia, lista com itens, erro de carregamento, criar, renomear, excluir com confirmação, e a mensagem de não autorizado.
+
+### T21c — Chat, tabela de indicadores e seletor manual
+
+- **Quem:** agente. **Depende de:** T21b, T18, T18b.
+- **Referências:** README 7.5, 7.6, 15.4; D5, D17, D19, D21.
+- **Pasta:** `frontend/src/features/chat/`.
+- **Passos:**
+  1. Tela `/conversas/:id`: mensagens paginadas lidas do banco, caixa de pergunta e botão para abrir o seletor manual.
+  2. Envio para `POST /agent`. O `request_id` vem de `crypto.randomUUID()` e é **reutilizado** quando a mesma pergunta é reenviada. Depois da resposta, a tela relê as mensagens do banco.
+  3. Seletor manual: lista de ações e de indicadores vinda de `GET /catalog`, com múltipla escolha. Abre sozinho quando o backend responde `needs_selection`, mostrando o motivo.
+  4. Renderização da resposta a partir de `payload` (D21), num componente `MetricTable`:
+     - cabeçalho com a data do snapshot, o estado de atualização e o manifesto ("11 de 12 ativos atualizados");
+     - uma tabela por indicador; cada célula mostra o valor, o estado e um link para a fonte;
+     - `verified`: valor do Fundamentus em destaque; o do StatusInvest aparece ao expandir;
+     - `divergent`: os dois valores lado a lado, a diferença e o limite; nenhum em destaque;
+     - `single_source`: o valor, com o aviso "não verificado entre fontes";
+     - `incomparable`: os valores e o motivo;
+     - `missing`: "Não disponível", nunca zero;
+     - `stale` e `expired`: aviso visível no cabeçalho.
+  5. O navegador formata os decimais (strings) para exibição em pt-BR, mas não calcula. A formatação fica numa função única, testada.
+  6. Não renderize HTML vindo do backend.
+  7. Em telas estreitas, a tabela continua legível (por exemplo, virando cartões por ativo).
+- **Pronto quando:** testes Vitest cobrem a renderização dos sete estados de validação e dos estados de atualização, a formatação de decimais e percentuais, a reutilização do `request_id` no reenvio e a abertura do seletor em `needs_selection`.
+
+### T21d — Carteira
+
+- **Quem:** agente. **Depende de:** T21c.
+- **Referências:** ADR 0002, E14 a E16.
+- **Pasta:** `frontend/src/features/portfolio/`.
+- **Passos:**
+  1. Tela `/carteira`: lista das ações da carteira do usuário, lida de `portfolio_items` com o JWT dele.
+  2. Adicionar: um seletor com as ações do universo (`GET /catalog`) que ainda não estão na carteira. Não há campo de texto livre, quantidade, preço nem valor.
+  3. Remover uma ação, com confirmação.
+  4. Um texto curto explica que só as ações acompanhadas pelo sistema podem ser adicionadas.
+  5. Botão "Atualizar carteira": cria uma conversa nova (ou usa a aberta) e envia a `POST /agent` uma `selection` com todas as ações da carteira e os cinco indicadores. É o caminho determinístico: sem `message`, sem LLM. Em seguida navega para a conversa.
+  6. Com a carteira vazia, o botão fica desabilitado e a tela convida a adicionar a primeira ação.
+- **Pronto quando:** testes Vitest cobrem: carteira vazia; adicionar; remover; ação já presente não aparece no seletor; o botão envia `selection` com todas as ações e nenhum `message`. Um teste confirma que o módulo da carteira não é importado pelo código do classificador nem aparece em nenhum corpo enviado com `message`.
+- **Não fazer:** não envie a carteira ao LLM. Não guarde nada além do símbolo.
+
+### T21e — Estado dos dados, exportação e aviso legal
+
+- **Quem:** agente. **Depende de:** T21c.
+- **Referências:** README 6.4, 18.1, 20.1, 23; D10; ADR 0002, E9.
+- **Pastas:** `frontend/src/features/data-status/` e `frontend/src/features/legal/`.
+- **Passos:**
+  1. Tela `/dados`, a partir de `GET /catalog`: data e idade do snapshot, estado de atualização, "X de Y ativos atualizados", contagem de campos por estado e a lista de falhas por ativo e fonte. Sem snapshot, a tela diz que ainda não há dados coletados.
+  2. Na mesma tela, a lista das fontes com o estado de permissão registrado (texto fixo vindo de configuração do front, coerente com `config/sources.yaml`).
+  3. Exportação: botão "Exportar meus dados", que baixa um JSON com as conversas, as mensagens e a carteira do usuário, lidos com o JWT dele. O arquivo traz a data da exportação e a versão do formato.
+  4. Tela `/aviso-legal`: o conteúdo da seção 23 do README, a lista de fontes com link, e o aviso de que as respostas não são recomendação de investimento. Um link para ela aparece no rodapé de todas as telas.
+- **Pronto quando:** testes Vitest cobrem: painel com snapshot, sem snapshot e com falhas; a exportação gera um JSON com conversas, mensagens e carteira; a tela de aviso legal é alcançável pelo rodapé.
+- **Não fazer:** não envie a exportação a nenhum servidor. Ela é montada e baixada no navegador.
+
+### T21f — Testes ponta a ponta e capturas de tela
+
+- **Quem:** agente. **Depende de:** T19, T21d, T21e.
+- **Objetivo:** provar o fluxo inteiro em ambiente local e produzir as imagens que o autor usa para validar o visual (ADR 0002, E20).
+- **Passos:**
+  1. Configure o Playwright (`playwright.config.ts` na raiz, testes em `tests/e2e/`). O ambiente é o Supabase local com o `seed.sql`, as funções servidas localmente com `MOCK_LLM=true` e o front em modo de desenvolvimento.
+  2. Login nos testes: crie o usuário de teste com e-mail e senha **somente no Supabase local**, via seed ou API administrativa local, e inicie a sessão pelo cliente. Não habilite e-mail e senha em nenhum ambiente hospedado, e não acrescente esse método à tela de login.
+  3. Roteiros: (a) entrar, criar conversa, enviar uma seleção, ver a tabela, recarregar a página e encontrar a conversa; (b) enviar uma pergunta em texto e ver a resposta do classificador simulado; (c) forçar `needs_selection` e usar o seletor; (d) adicionar duas ações à carteira e usar "Atualizar carteira"; (e) abrir o painel de dados; (f) exportar os dados.
+  4. Capture cada tela em tema claro e escuro, em 1280 px e em 390 px de largura, e grave em `docs/capturas/`. Inclua uma captura da tabela com um campo `verified`, um `divergent`, um `incomparable` e um `missing`.
+  5. Acrescente à CI um job `e2e` que só roda quando `playwright.config.ts` existe. Use o Chromium já disponível no runner ou instale-o no job. O job entra na lista `needs` de `ci-ok`.
+- **Pronto quando:** os seis roteiros passam localmente; as capturas existem em `docs/capturas/`; o job `e2e` passa no pull request.
+- **Se o ambiente não permitir subir o Supabase local:** registre em `docs/bloqueios.md`, entregue os roteiros escritos e as capturas que forem possíveis com o backend simulado, e diga com clareza o que não foi executado.
 
 ### T22a — Criar o projeto Supabase hospedado
 
@@ -489,7 +642,7 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 
 ### T22b — Publicar funções e frontend
 
-- **Quem:** agente + HUMANO. **Depende de:** T19, T21, T22a.
+- **Quem:** agente + HUMANO. **Depende de:** T19, T21f, T22a.
 - **Referências:** README 16.3 e 16.4.
 - **Passos:**
   1. HUMANO: definir os secrets das funções (`GROQ_API_KEY`, `GROQ_MODEL`, `APP_ORIGINS`, `APP_ENV`) com `supabase secrets set`.
@@ -498,15 +651,9 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
   4. Conferir que o bundle publicado não contém nenhuma chave privada (busque por `gsk_` e por `service_role` nos arquivos de `frontend/dist`).
 - **Pronto quando:** o autor entra na aplicação publicada, faz uma pergunta e recebe uma resposta com dados do snapshot real.
 
-### T23 — Exportação periódica das conversas
+### T23 — Exportação das conversas
 
-- **Quem:** agente. **Depende de:** T22a.
-- **Objetivo:** as conversas são o único dado que não pode ser recoletado (D10).
-- **Passos:**
-  1. Adicione à interface um botão "Exportar minhas conversas", que baixa um JSON com as conversas e mensagens do usuário, lidas com o JWT dele.
-  2. Documente em `docs/runbooks/backup.md` a rotina: exportar uma vez por semana e guardar fora do repositório.
-- **Pronto quando:** o arquivo baixado contém todas as conversas do usuário de teste; o runbook existe.
-- **Não fazer:** não envie conversas como artefato do GitHub Actions nem para o repositório.
+> **Absorvida pela T21e.** O botão "Exportar meus dados" cobre conversas, mensagens e carteira. A rotina de backup (exportar uma vez por semana e guardar fora do repositório) deve ser descrita em `docs/tarefas/T21e.md`.
 
 ---
 
@@ -530,6 +677,21 @@ Ordem sugerida: T01 a T04 podem andar em paralelo. T01 é a tarefa que mais bloq
 
 ---
 
+### T25 — Relatório final e pull request para `main`
+
+- **Quem:** agente (orquestrador). **Depende de:** todas as tarefas autônomas estarem `concluída` ou `bloqueada`.
+- **Passos:**
+  1. Escreva `docs/relatorio-execucao.md` com:
+     - um resumo de uma página: o que funciona, o que não funciona e o que falta para o uso real;
+     - uma tabela por tarefa: estado, pull request, evidência dos testes e link para `docs/tarefas/Txx.md`;
+     - a lista de bloqueios, copiada de `docs/bloqueios.md`;
+     - as capturas de tela de `docs/capturas/`, organizadas por tela;
+     - os comandos que o autor pode rodar para conferir (`pytest`, `npm test`, `deno test`, `supabase test db`, testes ponta a ponta), com o resultado obtido na última execução.
+  2. Confira que `docs/data-dictionary.md`, `docs/api.md` e `docs/architecture/visao-geral.md` refletem o código final.
+  3. Atualize `docs/pendencias.md`: marque o que foi resolvido e acrescente o que surgiu.
+  4. Abra um pull request de `fatia-acoes` para `main`, com o resumo do relatório no corpo. **Não faça o merge.**
+- **Pronto quando:** o relatório existe; a CI passa no pull request para `main`; o autor foi avisado.
+
 ## 11. Depois da fatia
 
 Em ordem sugerida. Cada item precisa de um plano próprio.
@@ -543,14 +705,11 @@ Em ordem sugerida. Cada item precisa de um plano próprio.
 
 ## 12. Pendências que dependem do autor
 
-| Pendência | Tarefa | Bloqueia |
-| --- | --- | --- |
-| Decidir se cada fonte é habilitada | T01 | T12, T13 |
-| Confirmar o titular da licença e o canal de segurança | T02 | T05 |
-| Ativar secret scanning | T02 | Código no repositório público |
-| Escolher os tickers | T04 | T15 em ambiente real |
-| Aprovar a metodologia dos campos | T07 | T12, T13, T14 |
-| Criar o projeto Supabase e os secrets | T22a, T16 | Coleta real |
-| Aprovar as tolerâncias | T17 | Estados `verified` e `divergent` |
-| Decidir o modelo | T20 | — |
-| Fazer a conferência manual | T24 | Aceite |
+A lista completa e atualizada está em [`docs/pendencias.md`](pendencias.md). As que seguram tarefas da execução autônoma são:
+
+| Pendência | Bloqueia |
+| --- | --- |
+| P-01 — Estrutura das páginas do Fundamentus e do StatusInvest | T12, T13 |
+| P-02 e P-03 — Teste de bloqueio e decisão sobre o resultado | Coleta real |
+| P-04 — Metodologia dos indicadores | Estados `verified` e `divergent` com dados reais |
+| P-05 — Parte hospedada | T16, T17, T20, T22a, T22b, T24 |
