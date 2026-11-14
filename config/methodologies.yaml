@@ -1,0 +1,33 @@
+version: "provisoria-1"
+# verdict: comparable | not_comparable | insufficient_metadata | single_source
+# Nenhum campo está como "comparable": só o autor decide isso (docs/pendencias.md, P-04).
+metrics:
+  price_to_book:
+    verdict: insufficient_metadata
+    sources:
+      fundamentus: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+      statusinvest: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+    notes: "Metodologia não lida. Preencher conforme docs/pendencias.md, P-04."
+  price_to_earnings:
+    verdict: insufficient_metadata
+    sources:
+      fundamentus: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+      statusinvest: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+    notes: "Metodologia não lida. Preencher conforme docs/pendencias.md, P-04."
+  dividend_yield:
+    verdict: insufficient_metadata
+    sources:
+      fundamentus: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+      statusinvest: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+    notes: "Metodologia não lida. Preencher conforme docs/pendencias.md, P-04."
+  roe:
+    verdict: insufficient_metadata
+    sources:
+      fundamentus: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+      statusinvest: { methodology_id: unknown, formula: null, window: null, basis: null, reference_date_available: null }
+    notes: "Metodologia não lida. Preencher conforme docs/pendencias.md, P-04."
+  quote_price:
+    verdict: single_source
+    sources:
+      brapi: { methodology_id: brapi_quote, formula: null, window: null, basis: null, reference_date_available: true }
+    notes: "Só a brapi fornece cotação nesta fatia."
