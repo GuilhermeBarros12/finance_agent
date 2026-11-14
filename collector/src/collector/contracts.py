@@ -47,6 +47,8 @@ MAX_SAFE_INT = 9007199254740991
 # Host e porta da URL de evidência: ASCII simples, igual nos dois lados.
 URL_FORBIDDEN_CHARS = r"[\x00-\x20\x7f-\x9f\\]"
 URL_AUTHORITY_PATTERN = r"^[A-Za-z0-9._-]+(:[0-9]{0,5})?$"
+# Octeto decimal estrito (0 a 255, sem zero à esquerda). Mesma regra no Zod.
+URL_IPV4_PATTERN = r"(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 # Nomes de parâmetro de URL que indicam credencial (README 7.1). Mesma lista no Zod.
@@ -221,6 +223,17 @@ def _check_source_url(value: Any) -> str:
         raise ValueError("source_url não pode conter credenciais")
     if not re.fullmatch(URL_AUTHORITY_PATTERN, parts.netloc):
         raise ValueError("source_url com host ou porta inválidos")
+    host = parts.netloc.partition(":")[0]
+    # Regra explícita de host, igual no Zod (não depende de `new URL`): rótulo
+    # `xn--` (punycode) é rejeitado; se o último rótulo começa por dígito, o host
+    # precisa ser IPv4 decimal estrito de quatro octetos.
+    # Um ponto final único não conta como rótulo (como em `new URL`).
+    bare_host = host.removesuffix(".")
+    labels = bare_host.split(".")
+    if any(label.lower().startswith("xn--") for label in labels):
+        raise ValueError("source_url com host punycode não é aceita")
+    if labels[-1][:1].isdigit() and not re.fullmatch(URL_IPV4_PATTERN, bare_host):
+        raise ValueError("source_url com host numérico que não é IPv4 válido")
     port = parts.netloc.partition(":")[2]
     if port and int(port) > 65535:
         raise ValueError("source_url com porta inválida")
@@ -235,7 +248,7 @@ def _check_source_url(value: Any) -> str:
 SourceUrl = Annotated[
     str,
     BeforeValidator(_check_source_url),
-    WithJsonSchema({"type": "string", "pattern": r"^https?://", "minLength": 1}),
+    WithJsonSchema({"type": "string", "pattern": r"^[hH][tT][tT][pP][sS]?://", "minLength": 1}),
 ]
 
 

@@ -27,6 +27,9 @@ function hasForbiddenUrlChar(text: string): boolean {
   return false;
 }
 const URL_AUTHORITY_PATTERN = /^[A-Za-z0-9._-]+(:[0-9]{0,5})?$/;
+// Octeto decimal estrito (0 a 255, sem zero à esquerda). Mesma regra de contracts.py.
+const IPV4_PATTERN =
+  /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const SECRET_PARAM_PATTERN =
   /token|key|secret|session|sid|auth|password|passwd|credential|signature/i;
@@ -109,6 +112,16 @@ export function isSafeSourceUrl(value: string): boolean {
   const authority = match[1];
   if (authority.includes("@")) return false;
   if (!URL_AUTHORITY_PATTERN.test(authority)) return false;
+  const host = authority.split(":")[0];
+  // Um ponto final único não conta como rótulo (como em `new URL`).
+  const bareHost = host.endsWith(".") ? host.slice(0, -1) : host;
+  const labels = bareHost.split(".");
+  if (labels.some((l) => l.toLowerCase().startsWith("xn--"))) return false;
+  if (
+    /^[0-9]/.test(labels[labels.length - 1]) && !IPV4_PATTERN.test(bareHost)
+  ) {
+    return false;
+  }
   const port = authority.split(":")[1];
   if (port && Number(port) > 65535) return false;
   let url: URL;
@@ -185,8 +198,15 @@ export const observationSchema = z
     }
   });
 
+const isDecimal = (v: unknown): v is string =>
+  typeof v === "string" && DECIMAL_PATTERN.test(v);
+
 // Compara decimais canônicos sem passar por float. Retorna -1, 0 ou 1.
+// Entrada fora de DECIMAL_PATTERN lança RangeError; os refines checam antes.
 export function compareDecimal(a: string, b: string): number {
+  if (!isDecimal(a) || !isDecimal(b)) {
+    throw new RangeError("decimal fora do padrão canônico");
+  }
   const parse = (t: string) => {
     const neg = t.startsWith("-");
     const [i, f = ""] = (neg ? t.slice(1) : t).split(".");
@@ -214,7 +234,7 @@ export const comparisonSchema = z
   })
   .superRefine((c, ctx) => {
     for (const name of ["delta_abs", "limit", "atol", "rtol"] as const) {
-      if (compareDecimal(c[name], "0") < 0) {
+      if (isDecimal(c[name]) && compareDecimal(c[name], "0") < 0) {
         ctx.addIssue({
           code: "custom",
           path: [name],
@@ -294,7 +314,11 @@ export const fieldValidationSchema = z
     if ((v.status === "verified" || v.status === "divergent") && count < 2) {
       issue("observation_ids", `${v.status} exige duas ou mais observações`);
     }
-    if (v.comparison != null) {
+    if (
+      v.comparison != null &&
+      isDecimal(v.comparison.delta_abs) &&
+      isDecimal(v.comparison.limit)
+    ) {
       const cmp = compareDecimal(v.comparison.delta_abs, v.comparison.limit);
       if (v.status === "verified" && cmp > 0) {
         issue("comparison", "verified exige delta_abs <= limit");
