@@ -1,6 +1,7 @@
 # Fontes de dados e permissões de coleta (T01).
-# Todas as fontes ficam desabilitadas até a decisão do autor registrada em
+# Fontes habilitadas pela decisão do autor de 2026-11-14, registrada em
 # docs/source-methodologies/permissoes.md (seção 5).
+# Fundamentus e StatusInvest: permissão não comprovada; uso por conta e risco do autor.
 # permission_status: permitida | proibida | indefinida
 # max_requests_per_minute: valores iniciais conservadores, a confirmar pelo autor.
 
@@ -10,18 +11,18 @@ sources:
     permission_status: indefinida
     reviewed_at: "2026-11-14"
     max_requests_per_minute: 2
-    enabled: false
+    enabled: true
 
   - id: statusinvest
     base_url: https://statusinvest.com.br
     permission_status: indefinida
     reviewed_at: "2026-11-14"
     max_requests_per_minute: 2
-    enabled: false
+    enabled: true
 
   - id: brapi
     base_url: https://brapi.dev
-    permission_status: indefinida
+    permission_status: permitida
     reviewed_at: "2026-11-14"
     max_requests_per_minute: 10
-    enabled: false
+    enabled: true

@@ -80,10 +80,17 @@ Nenhuma fonte foi concluída como `permitida` nesta revisão. Consequência para
 
 Preencher por fonte. Enquanto esta seção estiver em branco, `enabled` continua `false` para todas.
 
-- [ ] Fundamentus: habilitar? ( ) sim ( ) não. Resultado da leitura de `robots.txt` e termos: ________
-- [ ] StatusInvest: habilitar? ( ) sim ( ) não. Resultado da leitura de `condicoes-de-uso`: ________
-- [ ] brapi: habilitar? ( ) sim ( ) não. Confirmação do conflito com `Disallow: /api/`: ________
+- [x] Fundamentus: habilitar? (x) sim ( ) não. Resultado da leitura de `robots.txt` e termos: o autor consultou o site no navegador. O site declara que não se responsabiliza por aplicações feitas com base nos seus dados. O autor decidiu utilizar por conta e risco próprios.
+- [x] StatusInvest: habilitar? (x) sim ( ) não. Resultado da leitura de `condicoes-de-uso`: mesma situação do Fundamentus. O site declara que não se responsabiliza por aplicações feitas com base nos seus dados. O autor decidiu utilizar por conta e risco próprios.
+- [x] brapi: habilitar? (x) sim ( ) não. Confirmação do conflito com `Disallow: /api/`: o autor considera o uso permitido. A API é acessada com token, dentro do plano gratuito, conforme a seção 2 dos termos de uso.
 
-Data da decisão: ________
+Data da decisão: 2026-11-14
+
+### Registro do que a decisão significa
+
+- **Fundamentus e StatusInvest continuam com `permission_status: indefinida`.** A declaração de isenção de responsabilidade não é uma autorização nem uma proibição de coleta automatizada. As fontes estão habilitadas por decisão do autor, que assume o risco, e não porque a permissão foi comprovada.
+- **brapi passa a `permission_status: permitida`**, com base na licença de uso da API descrita nos termos.
+- **Risco técnico em aberto:** em 2026-11-14 as duas fontes de indicadores responderam `403` ao agente em ambiente de nuvem (seções 1 e 2). O coletor roda no GitHub Actions, um ambiente parecido. As regras do projeto continuam valendo: diante de `403` ou CAPTCHA a fonte é suspensa no lote, sem tentativa de contorno (T13, README 18.3). Se o bloqueio se repetir no coletor, a validação cruzada perde a fonte e a decisão D2 precisa ser revista.
+- **Redistribuição:** os termos da brapi proíbem redistribuir os dados. Isso precisa ser reavaliado antes de abrir a aplicação a outras pessoas (multiusuário).
 
 Se alguma fonte for vetada, a validação cruzada perde a segunda fonte. Nesse caso, D2 e a calibragem da T17 devem ser revistas com o autor (plano, T01).
