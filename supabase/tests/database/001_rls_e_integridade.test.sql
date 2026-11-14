@@ -37,7 +37,7 @@ select ok(
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind = 'r'),
-  13, 'treze tabelas em public (sem relatorios_pdf nem usage_counters)');
+  15, 'quinze tabelas em public (13 da T08 e 2 de staging; sem relatorios_pdf nem usage_counters)');
 
 -- Seed ------------------------------------------------------------------------------
 select is(
