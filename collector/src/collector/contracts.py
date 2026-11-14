@@ -36,9 +36,17 @@ from pydantic_core import PydanticCustomError
 
 # --- Padrões compartilhados com o lado TypeScript -------------------------------------
 
-DECIMAL_PATTERN = r"^-?\d+(\.\d+)?$"
-DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
-DATETIME_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+# Só dígitos ASCII (`\d` do Python aceitaria dígitos Unicode, o Zod não).
+DECIMAL_PATTERN = r"^-?[0-9]+(\.[0-9]+)?$"
+DATE_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+DATETIME_PATTERN = (
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+)
+# Inteiros do manifesto: limite seguro do JavaScript (2^53 - 1), igual nos dois lados.
+MAX_SAFE_INT = 9007199254740991
+# Host e porta da URL de evidência: ASCII simples, igual nos dois lados.
+URL_FORBIDDEN_CHARS = r"[\x00-\x20\x7f-\x9f\\]"
+URL_AUTHORITY_PATTERN = r"^[A-Za-z0-9._-]+(:[0-9]{0,5})?$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 # Nomes de parâmetro de URL que indicam credencial (README 7.1). Mesma lista no Zod.
@@ -204,15 +212,22 @@ Sha256Hex = Annotated[str, StringConstraints(pattern=SHA256_PATTERN)]
 def _check_source_url(value: Any) -> str:
     if not isinstance(value, str):
         raise PydanticCustomError("url_type", "source_url deve ser string")
+    if re.search(URL_FORBIDDEN_CHARS, value):
+        raise ValueError("source_url não pode conter espaço, controle ou barra invertida")
     parts = urlsplit(value)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
+    if parts.scheme not in ("http", "https") or not parts.netloc:
         raise ValueError("source_url deve ser uma URL http(s) absoluta")
-    if parts.username is not None or parts.password is not None or "@" in parts.netloc:
+    if "@" in parts.netloc:
         raise ValueError("source_url não pode conter credenciais")
+    if not re.fullmatch(URL_AUTHORITY_PATTERN, parts.netloc):
+        raise ValueError("source_url com host ou porta inválidos")
+    port = parts.netloc.partition(":")[2]
+    if port and int(port) > 65535:
+        raise ValueError("source_url com porta inválida")
     if parts.fragment:
         raise ValueError("source_url não pode conter fragmento")
     for name, _ in parse_qsl(parts.query, keep_blank_values=True):
-        if re.search(SECRET_PARAM_PATTERN, name, re.IGNORECASE):
+        if re.search(SECRET_PARAM_PATTERN, name, re.IGNORECASE | re.ASCII):
             raise ValueError("source_url não pode conter parâmetro de credencial ou sessão")
     return value
 
@@ -221,6 +236,27 @@ SourceUrl = Annotated[
     str,
     BeforeValidator(_check_source_url),
     WithJsonSchema({"type": "string", "pattern": r"^https?://", "minLength": 1}),
+]
+
+
+def _parse_count(value: Any) -> int:
+    """Inteiro JSON. `10.0` vale 10 (JavaScript não distingue); texto e booleano não."""
+    if isinstance(value, bool):
+        raise PydanticCustomError("count_type", "contagem deve ser inteiro, não booleano")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("contagem deve ser inteiro")
+        return int(value)
+    if isinstance(value, int):
+        return value
+    raise PydanticCustomError("count_type", "contagem deve ser número inteiro")
+
+
+SafeCount = Annotated[
+    int,
+    BeforeValidator(_parse_count),
+    Field(ge=0, le=MAX_SAFE_INT),
+    WithJsonSchema({"type": "integer", "minimum": 0, "maximum": MAX_SAFE_INT}),
 ]
 
 
@@ -284,6 +320,13 @@ class Comparison(_Contract):
     rtol: DecimalStr
     tolerance_version: NonEmptyStr
 
+    @model_validator(mode="after")
+    def _check_non_negative(self) -> Comparison:
+        for name in ("delta_abs", "limit", "atol", "rtol"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} não pode ser negativo")
+        return self
+
 
 class FieldValidation(_Contract):
     """Estado de validação de um campo de um ativo (README 7.5)."""
@@ -311,7 +354,35 @@ class FieldValidation(_Contract):
             and self.comparison is None
         ):
             raise ValueError(f"{self.status.value} exige comparison")
+        self._check_status_rules()
         return self
+
+    def _check_status_rules(self) -> None:
+        """Combinações que o README 7.5 e 7.6 não admitem."""
+        status = self.status
+        count = len(self.observation_ids)
+        if status in (
+            ValidationStatus.MISSING,
+            ValidationStatus.INVALID,
+            ValidationStatus.NOT_APPLICABLE,
+        ):
+            if self.selected_observation_id is not None:
+                raise ValueError(f"{status.value} não seleciona observação")
+            if self.comparison is not None:
+                raise ValueError(f"{status.value} não tem comparison")
+        if status is ValidationStatus.SINGLE_SOURCE:
+            if count != 1:
+                raise ValueError("single_source exige exatamente uma observação")
+            if self.comparison is not None:
+                raise ValueError("single_source não tem comparison")
+        if status in (ValidationStatus.VERIFIED, ValidationStatus.DIVERGENT) and count < 2:
+            raise ValueError(f"{status.value} exige duas ou mais observações")
+        comparison = self.comparison
+        if comparison is not None:
+            if status is ValidationStatus.VERIFIED and comparison.delta_abs > comparison.limit:
+                raise ValueError("verified exige delta_abs <= limit")
+            if status is ValidationStatus.DIVERGENT and comparison.delta_abs <= comparison.limit:
+                raise ValueError("divergent exige delta_abs > limit")
 
 
 class SourceFailure(_Contract):
@@ -329,8 +400,8 @@ class SnapshotManifest(_Contract):
     run_id: NonEmptyStr
     collected_at: IsoDateTime
     universe_version: NonEmptyStr
-    assets_total: Annotated[int, Field(ge=0, strict=True)]
-    assets_updated: Annotated[int, Field(ge=0, strict=True)]
+    assets_total: SafeCount
+    assets_updated: SafeCount
     failures: list[SourceFailure]
 
     @model_validator(mode="after")

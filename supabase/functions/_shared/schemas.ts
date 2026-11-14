@@ -11,10 +11,22 @@ import type {
 export type { FieldValidation, Observation, SnapshotManifest };
 
 // Padrões idênticos aos de contracts.py.
-const DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DECIMAL_PATTERN = /^-?[0-9]+(\.[0-9]+)?$/;
+const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const DATETIME_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
+const MAX_SAFE_INT = 9007199254740991;
+// Espaço, controle (0x00-0x20, 0x7f-0x9f) e barra invertida; igual a contracts.py.
+function hasForbiddenUrlChar(text: string): boolean {
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f) || ch === "\\") {
+      return true;
+    }
+  }
+  return false;
+}
+const URL_AUTHORITY_PATTERN = /^[A-Za-z0-9._-]+(:[0-9]{0,5})?$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const SECRET_PARAM_PATTERN =
   /token|key|secret|session|sid|auth|password|passwd|credential|signature/i;
@@ -57,7 +69,10 @@ export const METRIC_UNIT: Record<
 
 function isRealDate(text: string): boolean {
   const [y, m, d] = text.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
+  if (y < 1) return false; // Python não tem ano 0
+  // setUTCFullYear evita o mapeamento de anos 0 a 99 para 1900 a 1999 do Date.UTC.
+  const date = new Date(0);
+  date.setUTCFullYear(y, m - 1, d);
   return (
     date.getUTCFullYear() === y &&
     date.getUTCMonth() === m - 1 &&
@@ -88,8 +103,14 @@ const referenceAt = z.union([isoDate, isoDateTime]);
 const nonEmpty = z.string().min(1);
 
 export function isSafeSourceUrl(value: string): boolean {
-  if (!/^https?:\/\//i.test(value)) return false;
-  if (/^https?:\/\/[^/?#]*@/i.test(value)) return false;
+  if (hasForbiddenUrlChar(value)) return false;
+  const match = value.match(/^https?:\/\/([^/?#]*)/i);
+  if (!match || !match[1]) return false;
+  const authority = match[1];
+  if (authority.includes("@")) return false;
+  if (!URL_AUTHORITY_PATTERN.test(authority)) return false;
+  const port = authority.split(":")[1];
+  if (port && Number(port) > 65535) return false;
   let url: URL;
   try {
     url = new URL(value);
@@ -125,7 +146,7 @@ export const observationSchema = z
     source_id: nonEmpty,
     source_url: sourceUrl,
     upstream_source: nonEmpty.nullish(),
-    methodology_id: nonEmpty.optional(),
+    methodology_id: nonEmpty.default("unknown"),
     run_id: nonEmpty,
     parser_version: nonEmpty,
     raw_content_hash: z.string().regex(SHA256_PATTERN),
@@ -164,13 +185,44 @@ export const observationSchema = z
     }
   });
 
-export const comparisonSchema = z.strictObject({
-  delta_abs: decimalStr,
-  limit: decimalStr,
-  atol: decimalStr,
-  rtol: decimalStr,
-  tolerance_version: nonEmpty,
-});
+// Compara decimais canônicos sem passar por float. Retorna -1, 0 ou 1.
+export function compareDecimal(a: string, b: string): number {
+  const parse = (t: string) => {
+    const neg = t.startsWith("-");
+    const [i, f = ""] = (neg ? t.slice(1) : t).split(".");
+    return { neg, i, f };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  const scale = Math.max(pa.f.length, pb.f.length);
+  const toInt = (p: { neg: boolean; i: string; f: string }) => {
+    const n = BigInt(p.i + p.f.padEnd(scale, "0"));
+    return p.neg ? -n : n;
+  };
+  const x = toInt(pa);
+  const y = toInt(pb);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+export const comparisonSchema = z
+  .strictObject({
+    delta_abs: decimalStr,
+    limit: decimalStr,
+    atol: decimalStr,
+    rtol: decimalStr,
+    tolerance_version: nonEmpty,
+  })
+  .superRefine((c, ctx) => {
+    for (const name of ["delta_abs", "limit", "atol", "rtol"] as const) {
+      if (compareDecimal(c[name], "0") < 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: [name],
+          message: `${name} não pode ser negativo`,
+        });
+      }
+    }
+  });
 
 export const fieldValidationSchema = z
   .strictObject({
@@ -211,7 +263,50 @@ export const fieldValidationSchema = z
         message: `${v.status} exige comparison`,
       });
     }
+    const count = v.observation_ids.length;
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    if (
+      v.status === "missing" || v.status === "invalid" ||
+      v.status === "not_applicable"
+    ) {
+      if (v.selected_observation_id != null) {
+        issue(
+          "selected_observation_id",
+          `${v.status} não seleciona observação`,
+        );
+      }
+      if (v.comparison != null) {
+        issue("comparison", `${v.status} não tem comparison`);
+      }
+    }
+    if (v.status === "single_source") {
+      if (count !== 1) {
+        issue(
+          "observation_ids",
+          "single_source exige exatamente uma observação",
+        );
+      }
+      if (v.comparison != null) {
+        issue("comparison", "single_source não tem comparison");
+      }
+    }
+    if ((v.status === "verified" || v.status === "divergent") && count < 2) {
+      issue("observation_ids", `${v.status} exige duas ou mais observações`);
+    }
+    if (v.comparison != null) {
+      const cmp = compareDecimal(v.comparison.delta_abs, v.comparison.limit);
+      if (v.status === "verified" && cmp > 0) {
+        issue("comparison", "verified exige delta_abs <= limit");
+      }
+      if (v.status === "divergent" && cmp <= 0) {
+        issue("comparison", "divergent exige delta_abs > limit");
+      }
+    }
   });
+
+// Inteiro JSON seguro (0 a 2^53 - 1); `10.0` já chega aqui como 10.
+const count = z.number().int().min(0).max(MAX_SAFE_INT);
 
 export const sourceFailureSchema = z.strictObject({
   asset_id: nonEmpty,
@@ -225,8 +320,8 @@ export const snapshotManifestSchema = z
     run_id: nonEmpty,
     collected_at: isoDateTime,
     universe_version: nonEmpty,
-    assets_total: z.number().int().min(0),
-    assets_updated: z.number().int().min(0),
+    assets_total: count,
+    assets_updated: count,
     failures: z.array(sourceFailureSchema),
   })
   .superRefine((m, ctx) => {

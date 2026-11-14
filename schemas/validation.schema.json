@@ -5,22 +5,22 @@
       "description": "Resultado numérico da comparação (README 7.4). Todos os decimais são string.",
       "properties": {
         "atol": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
           "title": "Atol",
           "type": "string"
         },
         "delta_abs": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
           "title": "Delta Abs",
           "type": "string"
         },
         "limit": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
           "title": "Limit",
           "type": "string"
         },
         "rtol": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
           "title": "Rtol",
           "type": "string"
         },
