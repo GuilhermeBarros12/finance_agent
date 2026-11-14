@@ -1,7 +1,7 @@
 # Agente de Investimentos
 
 ![Status: em desenvolvimento](https://img.shields.io/badge/status-em%20desenvolvimento-orange)
-[![Licença: MIT proposta](https://img.shields.io/badge/licen%C3%A7a-MIT%20%28proposta%29-yellow)](#licenca)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green)](#licenca)
 ![Coleta: Python](https://img.shields.io/badge/coleta-Python-3776AB)
 ![Aplicação: TypeScript](https://img.shields.io/badge/aplica%C3%A7%C3%A3o-TypeScript-3178C6)
 ![Persistência: Supabase](https://img.shields.io/badge/persist%C3%AAncia-Supabase-3ECF8E)
@@ -990,7 +990,7 @@ A v1 não presume um worker de PDF continuando após o encerramento da função.
 ```text
 agente-investimentos/
 |-- README.md
-|-- LICENSE.example                  # MIT proposta; confirmar antes de publicar LICENSE
+|-- LICENSE.example                  # MIT (arquivo LICENSE criado na T02)
 |-- CONTRIBUTING.md                  # A criar
 |-- SECURITY.md                      # A criar com canal privado válido
 |-- .gitignore
@@ -2215,21 +2215,19 @@ Este aviso não substitui a avaliação das obrigações aplicáveis à operaç�
 <a id="licenca"></a>
 ## 24. Licença e autoria
 
-**Licença sugerida para o código: MIT — pendente de confirmação pelo autor.**
+**Licença do código: MIT — confirmada pelo autor.** O arquivo `LICENSE` na raiz traz o texto oficial, com ano 2026 e titular "Guilherme".
 
-Antes de anunciar o repositório como efetivamente licenciado sob MIT:
+Situação das etapas:
 
 ```text
-Confirmar a escolha da licença
-  -> criar LICENSE com o texto oficial
-  -> preencher ano e titular dos direitos
-  -> revisar licenças de dependências e ativos
-  -> atualizar o badge de "MIT proposta" para "MIT"
+Confirmar a escolha da licença            -> feito
+  -> criar LICENSE com o texto oficial    -> feito
+  -> preencher ano e titular dos direitos -> feito
+  -> atualizar o badge para "MIT"         -> feito
+  -> revisar licenças de dependências e ativos -> pendente (P-09)
 ```
 
 Referência: [texto oficial da licença MIT na Open Source Initiative][mit-license].
-
-Enquanto não houver um arquivo `LICENSE` válido, este README não deve ser interpretado como concessão completa da licença MIT.
 
 A licença do código **não relicencia** dados coletados, documentos de RI, marcas, fontes tipográficas, modelos ou serviços externos. Cada material mantém seus próprios termos. O recurso de dados abertos do Tesouro consultado, por exemplo, informa uma licença específica para a base. [Referência][tesouro-csv].
 
