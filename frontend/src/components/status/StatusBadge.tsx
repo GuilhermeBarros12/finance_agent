@@ -6,6 +6,7 @@ function Badge({ visual, prefix }: { visual: Visual; prefix: string }) {
   const { Icon, label, className } = visual
   return (
     <span
+      role="img"
       aria-label={`${prefix}: ${label}`}
       className={cn('inline-flex items-center gap-1 rounded-selo px-2 py-0.5 text-nota font-medium', className)}
     >

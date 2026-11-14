@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { createContext, useContext } from 'react'
 
 export type Theme = 'sistema' | 'claro' | 'escuro'
-const KEY = 'tema'
+export const THEME_KEY = 'tema'
 
-function read(): Theme {
+export const NEXT: Record<Theme, Theme> = { sistema: 'claro', claro: 'escuro', escuro: 'sistema' }
+
+export function readTheme(): Theme {
   try {
-    const v = localStorage.getItem(KEY)
+    const v = localStorage.getItem(THEME_KEY)
     return v === 'claro' || v === 'escuro' ? v : 'sistema'
   } catch {
     return 'sistema'
@@ -18,21 +20,20 @@ export function applyTheme(theme: Theme) {
   else root.setAttribute('data-tema', theme)
 }
 
-const NEXT: Record<Theme, Theme> = { sistema: 'claro', claro: 'escuro', escuro: 'sistema' }
+/** Aplica o tema guardado; chamado em main.tsx antes do render, vale para rotas públicas. */
+export function applyStoredTheme() {
+  applyTheme(readTheme())
+}
 
-export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(read)
+export interface ThemeContextValue {
+  theme: Theme
+  cycle: () => void
+}
 
-  useEffect(() => {
-    applyTheme(theme)
-    try {
-      if (theme === 'sistema') localStorage.removeItem(KEY)
-      else localStorage.setItem(KEY, theme)
-    } catch {
-      /* armazenamento indisponível: o tema vale só nesta visita */
-    }
-  }, [theme])
+export const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-  const cycle = useCallback(() => setTheme((t) => NEXT[t]), [])
-  return { theme, cycle }
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext)
+  if (!ctx) throw new Error('useTheme precisa estar dentro de ThemeProvider')
+  return ctx
 }

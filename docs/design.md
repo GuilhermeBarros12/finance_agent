@@ -17,7 +17,7 @@ Plano inicial: fundo creme, serifada de alto contraste, acento terracota. Revis�
 
 ## Paleta
 
-Cinco cores nomeadas, com valor para cada tema. Os tokens estão em `frontend/src/index.css` como variáveis CSS e expostos ao Tailwind (`bg-papel`, `text-tinta`, etc.).
+Seis cores nomeadas, com valor para cada tema. Os tokens estão em `frontend/src/index.css` como variáveis CSS e expostos ao Tailwind (`bg-papel`, `text-tinta`, etc.).
 
 | Nome | Papel no layout | Claro | Escuro |
 | --- | --- | --- | --- |
@@ -28,7 +28,7 @@ Cinco cores nomeadas, com valor para cada tema. Os tokens estão em `frontend/sr
 | Âmbar-alerta | `divergent`, `stale` | `#8A5200` | `#E3B25F` |
 | Carmim | `invalid`, `expired`, erros | `#A3281F` | `#EE9A92` |
 
-Derivados, calculados a partir dos acima e também tokens: `superficie` (claro `#FFFFFF`, escuro `#1A2128`), `borda` (claro `#C9D0CA`, escuro `#303B45`) e `tinta-suave` (texto secundário; claro `#4B5967`, escuro `#A5B0BA`). Todos os pares texto/fundo acima têm contraste de pelo menos 4,5:1.
+Derivados, calculados a partir dos acima e também tokens: `superficie` (claro `#FFFFFF`, escuro `#1A2128`), `borda` (claro `#C9D0CA`, escuro `#303B45`) e `tinta-suave` (texto secundário; claro `#4B5967`, escuro `#A5B0BA`). Todos os pares texto/fundo acima têm contraste de pelo menos 4,5:1 (medido na T21a).
 
 ## Tipografia
 
@@ -57,7 +57,7 @@ Regra: nenhum estado depende só de cor. Cada um tem ícone, texto e formato de 
 | --- | --- | --- | --- | --- | --- |
 | `verified` | as duas fontes concordam dentro da tolerância | Conferido | círculo com visto | Verde-conferido | sólida |
 | `divergent` | as fontes discordam; os dois valores aparecem | Divergente | triângulo de alerta | Âmbar-alerta | sólida, espessa (2 px) |
-| `single_source` | só uma fonte trouxe o campo | Fonte única | círculo com "1" | Tinta-suave | sólida |
+| `single_source` | só uma fonte trouxe o campo | Fonte única | círculo com ponto central | Tinta-suave | sólida |
 | `incomparable` | definições diferentes; não dá para comparar | Não comparável | sinal de igual cortado | Tinta-suave | tracejada |
 | `missing` | nenhuma fonte trouxe o campo | Sem dado | círculo vazio com traço | Tinta-suave | pontilhada |
 | `invalid` | valor fora do intervalo plausível ou ilegível | Inválido | círculo com X | Carmim | sólida, espessa (2 px) |
@@ -70,9 +70,9 @@ Selo `FreshnessBadge`, mesmo formato do anterior. A idade vem do servidor; o nav
 | --- | --- | --- | --- | --- | --- |
 | `fresh` | dentro do prazo | Atualizado | relógio com visto | Verde-conferido | sólida |
 | `stale` | passou do prazo de atenção | Desatualizado | ampulheta | Âmbar-alerta | sólida, espessa (2 px) |
-| `expired` | passou do prazo; não use como atual | Vencido | relógio com X | Carmim | sólida, espessa (2 px) e tracejada na base |
+| `expired` | passou do prazo; não use como atual | Vencido | relógio com alerta (o lucide-react não tem relógio com X) | Carmim | sólida, espessa (2 px), com a base tracejada |
 
-O texto do selo também vai como `aria-label` completo (por exemplo, "Estado da validação: Divergente").
+O selo tem `role="img"` e `aria-label` completo (por exemplo, "Estado da validação: Divergente").
 
 ## Estados de tela
 

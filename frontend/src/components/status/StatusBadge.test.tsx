@@ -18,7 +18,7 @@ test('cada estado tem texto próprio, ícone e rótulo acessível (não depende 
     const { container, unmount } = render(<StatusBadge status={s} />)
     const text = VALIDATION_VISUAL[s].label
     labels.add(text)
-    expect(screen.getByLabelText(`Estado da validação: ${text}`)).toBeTruthy()
+    expect(screen.getByRole('img', { name: `Estado da validação: ${text}` })).toBeTruthy()
     expect(container.querySelector('svg')).not.toBeNull()
     unmount()
   }
@@ -26,7 +26,7 @@ test('cada estado tem texto próprio, ícone e rótulo acessível (não depende 
     const { container, unmount } = render(<FreshnessBadge status={s} />)
     const text = FRESHNESS_VISUAL[s].label
     labels.add(text)
-    expect(screen.getByLabelText(`Estado da atualização: ${text}`)).toBeTruthy()
+    expect(screen.getByRole('img', { name: `Estado da atualização: ${text}` })).toBeTruthy()
     expect(container.querySelector('svg')).not.toBeNull()
     unmount()
   }

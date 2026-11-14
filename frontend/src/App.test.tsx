@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import { SessionProvider } from '@/features/auth/hooks/SessionProvider'
 import { AppRoutes } from '@/routes/AppRoutes'
 
@@ -16,11 +17,13 @@ vi.mock('@/lib/supabase', () => ({
 
 function renderAt(path: string) {
   return render(
-    <SessionProvider>
-      <MemoryRouter initialEntries={[path]}>
-        <AppRoutes />
-      </MemoryRouter>
-    </SessionProvider>,
+    <ThemeProvider>
+      <SessionProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </SessionProvider>
+    </ThemeProvider>,
   )
 }
 
