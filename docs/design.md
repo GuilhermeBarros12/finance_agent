@@ -12,7 +12,7 @@ Plano inicial: fundo creme, serifada de alto contraste, acento terracota. Revis�
 
 - Fundo passou de creme para um cinza-esverdeado frio de papel de relatório ("Papel"), e o acento deixou de ser terracota: o único acento de marca é o azul-tinta, a cor da caneta de quem confere.
 - A serifa ficou só nos títulos e nos valores de destaque; o texto corrido usa sans neutra. Números sempre em algarismos tabulares, para alinhar colunas de indicadores.
-- A coisa memorável é o **selo de estado**: cada estado de validação é uma etiqueta com ícone, texto e borda própria, como um carimbo de conferência. O resto da interface fica calmo.
+- A coisa memorável é o **selo de estado**: cada estado de validação é uma etiqueta com ícone e texto próprios e uma borda que reforça, como um carimbo de conferência. O resto da interface fica calmo.
 - Sem cartões idênticos em grade: a lista de indicadores é uma tabela de lançamentos, com divisórias finas que separam um campo do outro (a estrutura mostra que cada campo é validado sozinho).
 
 ## Paleta
@@ -51,7 +51,7 @@ Derivados, calculados a partir dos acima e também tokens: `superficie` (claro `
 
 ## Estados de validação
 
-Regra: nenhum estado depende só de cor. Cada um tem ícone, texto e formato de borda próprios. O selo é o componente `StatusBadge` (`frontend/src/components/status/`).
+Regra: nenhum estado depende só de cor. Cada um tem ícone e texto próprios; a borda reforça (alguns estados compartilham o mesmo formato). O selo é o componente `StatusBadge` (`frontend/src/components/status/`).
 
 | Estado | Significado | Texto do selo | Ícone | Cor | Borda |
 | --- | --- | --- | --- | --- | --- |

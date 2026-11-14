@@ -32,3 +32,13 @@ test('cada estado tem texto próprio, ícone e rótulo acessível (não depende 
   }
   expect(labels.size).toBe(9)
 })
+
+test('o selo mantém o tamanho de texto do guia (text-nota) ao lado da cor', () => {
+  for (const s of validation) {
+    const { unmount } = render(<StatusBadge status={s} />)
+    const el = screen.getByRole('img')
+    expect(el.className).toContain('text-nota')
+    expect(el.className).toMatch(/text-(verde|ambar|tinta|carmim)/)
+    unmount()
+  }
+})
