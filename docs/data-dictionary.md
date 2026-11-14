@@ -37,7 +37,7 @@ Sem acesso para `anon` e `authenticated`: sem grant e sem política. A leitura p
 | `published_at` | timestamptz, nulo | Preenchido = publicado e imutável. |
 | `created_at` | timestamptz | |
 
-Trigger `snapshots_immutable`: rejeita `update` e `delete` de linha com `published_at` preenchido (erro `23000`). Os triggers `observations_immutable` e `field_validations_immutable` rejeitam insert, update e delete de linhas cujo snapshot já foi publicado. Exceção única: a rotina de retenção liga `set_config('app.retention_job', 'on', true)` na própria transação. Fluxo de publicação: inserir observações e validações com `published_at` nulo, depois preencher `published_at`.
+Trigger `snapshots_immutable`: rejeita `update` e `delete` de linha com `published_at` preenchido (erro `23000`). Os triggers `observations_immutable` e `field_validations_immutable` rejeitam insert, update e delete de linhas cujo snapshot já foi publicado. Exceção única: a rotina de retenção liga `set_config('app.retention_job', 'on', true)` na própria transação, e isso libera SÓ o `delete` (em cascata); update e insert seguem rejeitados com a variável ligada, mesmo para `service_role`. O FK `field_validations.selected_observation_id` não tem `on delete set null` (geraria update em linha publicada). Triggers `*_no_truncate` (`reject_truncate()`) proíbem `truncate` nas três tabelas. `selected_observation_id` e `observation_ids` não garantem mesmo snapshot/métrica: a RPC de publicação (T09) deve validar. Fluxo de publicação: inserir observações e validações com `published_at` nulo, depois preencher `published_at`.
 
 ### `observations`
 Um campo de um ativo em uma fonte (README 7.1).
@@ -109,8 +109,8 @@ Contador global (não por usuário). pk `(usage_date, provider)`; `request_count
 
 | Função | Papel |
 | --- | --- |
-| `public.is_allowed_user()` | `security invoker`, `stable`. Verdadeiro se `auth.uid()` está em `allowed_users` com `enabled`. Execução só para `authenticated`. |
-| `public.reject_published_snapshot_change()` | Função dos triggers de imutabilidade. Sem execução direta por papéis do navegador. |
+| `public.is_allowed_user()` | `security invoker`, `stable`. Verdadeiro se `auth.uid()` está em `allowed_users` com `enabled`. `execute` revogado de `public` e `anon`; mantido para `authenticated` (as políticas a usam) e `service_role`. |
+| `public.reject_published_snapshot_change()`, `public.reject_truncate()`, `public.touch_updated_at()` | Funções de trigger. `execute` revogado de `public`, `anon` e `authenticated` (`revoke ... from public` não basta: o Supabase concede execute a anon/authenticated por default ACL). Testado com `has_function_privilege`. Padrão para funções `security definer` da T09. |
 | `public.touch_updated_at()` | Atualiza `updated_at` em `conversations`, `request_runs` e `llm_usage`. |
 
 ## Políticas (resumo)

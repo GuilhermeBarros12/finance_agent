@@ -48,7 +48,7 @@ as $$
   );
 $$;
 
-revoke all on function public.is_allowed_user() from public;
+revoke all on function public.is_allowed_user() from public, anon;
 grant execute on function public.is_allowed_user() to authenticated;
 
 -- conversations: o dono autorizado lê, cria, renomeia e apaga.

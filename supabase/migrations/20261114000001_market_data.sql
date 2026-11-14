@@ -101,7 +101,8 @@ create table public.field_validations (
   metric text not null,
   status text not null,
   freshness text not null,
-  selected_observation_id uuid references public.observations (id) on delete set null,
+  -- Sem ON DELETE SET NULL: esse FK geraria um UPDATE em linha publicada na retenção.
+  selected_observation_id uuid references public.observations (id),
   observation_ids uuid[] not null default '{}',
   delta_abs numeric,
   limit_value numeric,
@@ -146,7 +147,9 @@ create table public.active_snapshot (
 -- Imutabilidade (T08, passo 1). Um snapshot publicado (published_at preenchido) não
 -- aceita update nem delete, e suas observações e validações também não mudam. A única
 -- exceção é a rotina de retenção, que liga `app.retention_job` na própria transação
--- (set_config(..., true)). O cliente não tem privilégio de escrita nessas tabelas.
+-- (set_config(..., true)) e libera SÓ o DELETE. UPDATE e INSERT seguem rejeitados.
+-- Nota para a T09: selected_observation_id e observation_ids não garantem que a
+-- observação pertença ao mesmo snapshot/métrica; a RPC de publicação deve validar.
 create function public.reject_published_snapshot_change()
 returns trigger
 language plpgsql
@@ -156,8 +159,9 @@ declare
   v_snapshot_id uuid;
   v_published timestamptz;
 begin
-  if coalesce(current_setting('app.retention_job', true), '') = 'on' then
-    return coalesce(new, old);
+  if tg_op = 'DELETE'
+     and coalesce(current_setting('app.retention_job', true), '') = 'on' then
+    return old;
   end if;
 
   if tg_table_name = 'snapshots' then
@@ -192,4 +196,24 @@ create trigger field_validations_immutable
   before insert or update or delete on public.field_validations
   for each row execute function public.reject_published_snapshot_change();
 
-revoke all on function public.reject_published_snapshot_change() from public;
+create function public.reject_truncate()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'truncate de % é proibido (dados publicados são imutáveis)', tg_table_name
+    using errcode = 'integrity_constraint_violation';
+end;
+$$;
+
+create trigger snapshots_no_truncate before truncate on public.snapshots
+  for each statement execute function public.reject_truncate();
+create trigger observations_no_truncate before truncate on public.observations
+  for each statement execute function public.reject_truncate();
+create trigger field_validations_no_truncate before truncate on public.field_validations
+  for each statement execute function public.reject_truncate();
+
+-- `from public` não basta: o Supabase concede EXECUTE a anon e authenticated por default ACL.
+revoke all on function public.reject_published_snapshot_change() from public, anon, authenticated;
+revoke all on function public.reject_truncate() from public, anon, authenticated;

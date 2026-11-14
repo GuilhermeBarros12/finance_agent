@@ -99,4 +99,4 @@ create trigger request_runs_touch before update on public.request_runs
 create trigger llm_usage_touch before update on public.llm_usage
   for each row execute function public.touch_updated_at();
 
-revoke all on function public.touch_updated_at() from public;
+revoke all on function public.touch_updated_at() from public, anon, authenticated;
