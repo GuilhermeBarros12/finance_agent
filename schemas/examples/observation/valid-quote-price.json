@@ -1,0 +1,21 @@
+{
+  "observation_id": "obs-demo3-price",
+  "asset_id": "DEMO3",
+  "asset_class": "stock",
+  "metric": "quote_price",
+  "raw_value": "12,34",
+  "value_decimal": "12.34",
+  "unit": "BRL",
+  "currency": "BRL",
+  "period_start": null,
+  "period_end": null,
+  "reference_at": "2026-09-18T20:55:00-03:00",
+  "collected_at": "2026-09-18T21:00:00Z",
+  "source_id": "brapi",
+  "source_url": "https://example.com/fonte-a/demo3",
+  "upstream_source": "b3",
+  "methodology_id": "unknown",
+  "run_id": "run-2026-09-18",
+  "parser_version": "0.1.0",
+  "raw_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
