@@ -1,0 +1,99 @@
+@import '@fontsource-variable/source-serif-4';
+@import '@fontsource-variable/public-sans';
+@import 'tailwindcss';
+
+/* Tokens de docs/design.md. Não adicione cores fora desta lista. */
+:root {
+  --papel: #f2f4f1;
+  --superficie: #ffffff;
+  --tinta: #18212b;
+  --tinta-suave: #4b5967;
+  --borda: #c9d0ca;
+  --azul-caneta: #24557f;
+  --verde-conferido: #1d6446;
+  --ambar-alerta: #8a5200;
+  --carmim: #a3281f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    --papel: #12171c;
+    --superficie: #1a2128;
+    --tinta: #e4e8e3;
+    --tinta-suave: #a5b0ba;
+    --borda: #303b45;
+    --azul-caneta: #8db7e0;
+    --verde-conferido: #7fcba4;
+    --ambar-alerta: #e3b25f;
+    --carmim: #ee9a92;
+    color-scheme: dark;
+  }
+}
+
+:root[data-tema='escuro'] {
+  --papel: #12171c;
+  --superficie: #1a2128;
+  --tinta: #e4e8e3;
+  --tinta-suave: #a5b0ba;
+  --borda: #303b45;
+  --azul-caneta: #8db7e0;
+  --verde-conferido: #7fcba4;
+  --ambar-alerta: #e3b25f;
+  --carmim: #ee9a92;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-papel: var(--papel);
+  --color-superficie: var(--superficie);
+  --color-tinta: var(--tinta);
+  --color-tinta-suave: var(--tinta-suave);
+  --color-borda: var(--borda);
+  --color-azul-caneta: var(--azul-caneta);
+  --color-verde-conferido: var(--verde-conferido);
+  --color-ambar-alerta: var(--ambar-alerta);
+  --color-carmim: var(--carmim);
+  --font-sans: 'Public Sans Variable', system-ui, sans-serif;
+  --font-serif: 'Source Serif 4 Variable', Georgia, serif;
+  --text-nota: 0.8125rem;
+  --text-rotulo: 0.9375rem;
+  --text-subtitulo: 1.25rem;
+  --text-tela: 1.625rem;
+  --text-pagina: 2.125rem;
+  --radius-selo: 4px;
+  --radius-painel: 8px;
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+  }
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  :focus-visible {
+    outline: 2px solid var(--azul-caneta);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
