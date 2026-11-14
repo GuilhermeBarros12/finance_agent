@@ -1,0 +1,12 @@
+{
+  "imports": {
+    "zod": "npm:zod@4.6.7",
+    "@std/assert": "jsr:@std/assert@1.0.19"
+  },
+  "lint": {
+    "exclude": ["_shared/contracts.gen.ts"]
+  },
+  "fmt": {
+    "exclude": ["_shared/contracts.gen.ts"]
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "Comparison": {
+      "additionalProperties": false,
+      "description": "Resultado numérico da comparação (README 7.4). Todos os decimais são string.",
+      "properties": {
+        "atol": {
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "title": "Atol",
+          "type": "string"
+        },
+        "delta_abs": {
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "title": "Delta Abs",
+          "type": "string"
+        },
+        "limit": {
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "title": "Limit",
+          "type": "string"
+        },
+        "rtol": {
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "title": "Rtol",
+          "type": "string"
+        },
+        "tolerance_version": {
+          "minLength": 1,
+          "title": "Tolerance Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "delta_abs",
+        "limit",
+        "atol",
+        "rtol",
+        "tolerance_version"
+      ],
+      "title": "Comparison",
+      "type": "object"
+    },
+    "Freshness": {
+      "description": "Estados de atualização (README 6.4).",
+      "enum": [
+        "fresh",
+        "stale",
+        "expired",
+        "unknown_reference_date"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "Metric": {
+      "description": "Os cinco campos da fatia.",
+      "enum": [
+        "quote_price",
+        "price_to_book",
+        "price_to_earnings",
+        "dividend_yield",
+        "roe"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "ValidationStatus": {
+      "description": "Estados de validação (README 7.5).",
+      "enum": [
+        "verified",
+        "divergent",
+        "single_source",
+        "incomparable",
+        "missing",
+        "not_applicable",
+        "invalid"
+      ],
+      "title": "ValidationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Estado de validação de um campo de um ativo (README 7.5).",
+  "properties": {
+    "asset_id": {
+      "minLength": 1,
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "comparison": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Comparison"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "freshness": {
+      "$ref": "#/$defs/Freshness"
+    },
+    "metric": {
+      "$ref": "#/$defs/Metric"
+    },
+    "observation_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Observation Ids",
+      "type": "array"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "selected_observation_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Observation Id"
+    },
+    "status": {
+      "$ref": "#/$defs/ValidationStatus"
+    }
+  },
+  "required": [
+    "asset_id",
+    "metric",
+    "status",
+    "freshness",
+    "observation_ids"
+  ],
+  "title": "FieldValidation",
+  "type": "object"
+}

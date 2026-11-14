@@ -1,0 +1,21 @@
+{
+  "observation_id": "obs-test4-pl",
+  "asset_id": "TEST4",
+  "asset_class": "stock",
+  "metric": "price_to_earnings",
+  "raw_value": "-3,20",
+  "value_decimal": "-3.20",
+  "unit": "ratio",
+  "currency": null,
+  "period_start": null,
+  "period_end": null,
+  "reference_at": null,
+  "collected_at": "2026-09-18T21:00:00Z",
+  "source_id": "fundamentus",
+  "source_url": "https://example.com/fonte-a/demo3",
+  "upstream_source": null,
+  "methodology_id": "dy_ttm_fixture",
+  "run_id": "run-2026-09-18",
+  "parser_version": "0.1.0",
+  "raw_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
