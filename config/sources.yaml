@@ -1,0 +1,27 @@
+# Fontes de dados e permissões de coleta (T01).
+# Todas as fontes ficam desabilitadas até a decisão do autor registrada em
+# docs/source-methodologies/permissoes.md (seção 5).
+# permission_status: permitida | proibida | indefinida
+# max_requests_per_minute: valores iniciais conservadores, a confirmar pelo autor.
+
+sources:
+  - id: fundamentus
+    base_url: https://www.fundamentus.com.br
+    permission_status: indefinida
+    reviewed_at: "2026-11-14"
+    max_requests_per_minute: 2
+    enabled: false
+
+  - id: statusinvest
+    base_url: https://statusinvest.com.br
+    permission_status: indefinida
+    reviewed_at: "2026-11-14"
+    max_requests_per_minute: 2
+    enabled: false
+
+  - id: brapi
+    base_url: https://brapi.dev
+    permission_status: indefinida
+    reviewed_at: "2026-11-14"
+    max_requests_per_minute: 10
+    enabled: false
