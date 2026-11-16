@@ -15,8 +15,31 @@ import {
 import { reserveRun } from "./idempotency.ts";
 import { assembleEvidence, renderContent } from "./evidence.ts";
 import type { AgentDeps } from "./types.ts";
+import type { LlmFailureCode } from "../_shared/llm/groq.ts";
 
 const UNIVERSE = "stocks";
+
+// Textos fixos (pt-BR) para cada motivo de needs_selection. O texto do LLM nunca é usado.
+const NEEDS_SELECTION_CONTENT =
+  "Não foi possível interpretar a pergunta automaticamente. Escolha os ativos e os indicadores no seletor manual.";
+const LLM_WARNINGS: Record<LlmFailureCode, string> = {
+  LLM_INVALID_OUTPUT:
+    "A interpretação automática não produziu uma resposta válida. O modo por IA não foi usado.",
+  LLM_UNSUPPORTED:
+    "A pergunta não se encaixa em uma consulta de indicadores de ações suportada.",
+  LLM_QUOTA_EXHAUSTED:
+    "O limite diário do modo por IA foi atingido. O modo por IA não foi usado.",
+  LLM_QUOTA_UNAVAILABLE:
+    "Não foi possível verificar o limite do modo por IA. O modo por IA não foi usado.",
+  LLM_PROVIDER_ERROR:
+    "O serviço de IA não respondeu corretamente. O modo por IA não foi usado.",
+  LLM_TIMEOUT:
+    "O serviço de IA demorou demais para responder. O modo por IA não foi usado.",
+  LLM_DISABLED: "O modo por IA não está habilitado neste ambiente.",
+  LLM_INPUT_TOO_LONG:
+    "A mensagem é longa demais para a interpretação automática.",
+  LLM_NO_UNIVERSE: "Não há ações cadastradas para interpretar a pergunta.",
+};
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 function json(
@@ -52,6 +75,7 @@ export async function handleAgentRequest(
   const cors = corsHeaders(req, deps.allowedOrigins);
   let requestId: string | undefined;
   let userId: string | undefined;
+  let llmCalls: number | undefined;
 
   const finish = (res: Response, code?: string, error?: string): Response => {
     for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
@@ -64,6 +88,7 @@ export async function handleAgentRequest(
       user_id: userId,
       duration_ms: deps.now().getTime() - started,
       error,
+      llm_calls: llmCalls,
     });
     return res;
   };
@@ -137,8 +162,41 @@ export async function handleAgentRequest(
       throw errors.notFound();
     }
 
-    // 5. Resolver ativos contra `assets`; não confiamos na lista do navegador.
-    const symbols = body.selection.asset_ids;
+    // 4b. Sem `selection`: o classificador escolhe tickers e métricas a partir da mensagem
+    //     (T19). Só depois de autenticar, autorizar, reservar e confirmar a conversa, para
+    //     que quem não é dono não gaste cota. Nenhuma transação aberta durante a chamada.
+    let selection = body.selection;
+    let intentSource: "manual" | "llm" | "mock" = "manual";
+    if (!selection) {
+      const universe = await deps.market.listStockSymbols();
+      const outcome = await deps.llm.classify(body.message!, universe);
+      llmCalls = outcome.calls;
+      if (!outcome.ok) {
+        // D5: falha do LLM não derruba a requisição nem bloqueia a consulta. Nada é
+        // gravado em `messages` (não há dado a apresentar); a execução é concluída com
+        // esta resposta, e repetir o mesmo request_id a devolve sem nova chamada nem cota.
+        const response = {
+          request_id: body.request_id,
+          conversation_id: body.conversation_id,
+          status: "needs_selection",
+          mode: "deterministic",
+          content: NEEDS_SELECTION_CONTENT,
+          reason: { code: outcome.code },
+          warnings: [{
+            code: outcome.code,
+            message: LLM_WARNINGS[outcome.code],
+          }],
+        };
+        await deps.system.complete(openRunId, response);
+        openRunId = null;
+        return finish(json(200, response), outcome.code);
+      }
+      selection = outcome.selection;
+      intentSource = outcome.source;
+    }
+
+    // 5. Resolver ativos contra `assets`; não confiamos na lista do navegador nem do LLM.
+    const symbols = selection.asset_ids;
     const found = await deps.market.findAssets(symbols);
     const bySymbol = new Map(found.map((a) => [a.symbol, a]));
     const unsupported = symbols.filter((s) => {
@@ -154,7 +212,7 @@ export async function handleAgentRequest(
 
     // 7. Pacote de evidências.
     const assetIds = assets.map((a) => a.id);
-    const metrics = body.selection.metrics;
+    const metrics = selection.metrics;
     const [validations, observations] = await Promise.all([
       deps.market.loadValidations(snapshot.id, assetIds, metrics),
       deps.market.loadObservations(snapshot.id, assetIds, metrics),
@@ -200,6 +258,7 @@ export async function handleAgentRequest(
       message_id: assistantMessageId,
       status: "completed",
       mode: "deterministic",
+      intent_source: intentSource,
       snapshot_id: snapshot.id,
       content,
       citations: assembled.citations,

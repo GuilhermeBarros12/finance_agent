@@ -75,7 +75,7 @@ Deno.test({
       anonKey: ANON,
       serviceKey: SERVICE,
       origins: [],
-    });
+    }, { mode: "disabled" });
     let clock = () => new Date();
     const deps = { ...realDeps, now: () => clock() };
 

@@ -29,7 +29,8 @@ export const agentRequestSchema = z.strictObject({
       message: `message excede ${MAX_MESSAGE_CHARS} caracteres`,
     })
     .nullish(),
-  // Obrigatório nesta tarefa; a T19 passa a aceitar só `message`.
+  // Opcional desde a T19: sem `selection`, o classificador (LLM) escolhe a partir de
+  // `message`. Sem os dois, o pedido é inválido (ver parseAgentRequest).
   selection: z.strictObject({
     asset_ids: z.array(assetId).min(1).max(MAX_ASSETS).refine(unique, {
       message: "asset_ids repetidos",
@@ -38,7 +39,7 @@ export const agentRequestSchema = z.strictObject({
       unique,
       { message: "metrics repetidas" },
     ),
-  }),
+  }).optional(),
 });
 
 export type AgentRequest = {
@@ -46,7 +47,8 @@ export type AgentRequest = {
   conversation_id: string;
   // Texto digitado, ou null quando ausente ou só espaços.
   message: string | null;
-  selection: { asset_ids: string[]; metrics: string[] };
+  // Nulo quando o corpo veio só com `message` (o classificador decide).
+  selection: { asset_ids: string[]; metrics: string[] } | null;
 };
 
 export type ParseResult =
@@ -69,16 +71,27 @@ export function parseAgentRequest(input: unknown): ParseResult {
   const message = v.message == null || v.message.trim() === ""
     ? null
     : v.message;
+  if (!v.selection && message === null) {
+    return {
+      ok: false,
+      issues: [{
+        path: "selection",
+        message: "informe selection ou message",
+      }],
+    };
+  }
   return {
     ok: true,
     value: {
       request_id: v.request_id,
       conversation_id: v.conversation_id,
       message,
-      selection: {
-        asset_ids: v.selection.asset_ids,
-        metrics: v.selection.metrics,
-      },
+      selection: v.selection
+        ? {
+          asset_ids: v.selection.asset_ids,
+          metrics: v.selection.metrics,
+        }
+        : null,
     },
   };
 }
@@ -91,10 +104,12 @@ export function canonicalBody(req: AgentRequest): string {
     request_id: req.request_id,
     conversation_id: req.conversation_id,
     message: req.message,
-    selection: {
-      asset_ids: req.selection.asset_ids,
-      metrics: req.selection.metrics,
-    },
+    selection: req.selection
+      ? {
+        asset_ids: req.selection.asset_ids,
+        metrics: req.selection.metrics,
+      }
+      : null,
   });
 }
 
