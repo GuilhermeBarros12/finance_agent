@@ -34,7 +34,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T15 | Pipeline, CLI e publicação | T09, T11, T14 | concluída | [#18](https://github.com/GuilhermeBarros12/finance_agent/pull/18) |
 | T16 | Workflow diário e alerta de idade | T15, T22a | fora da leva | |
 | T17 | Experimento de calibragem das tolerâncias | T16 | fora da leva | |
-| T18 | Edge Function do agente (modo determinístico) | T06, T08 | pendente | |
+| T18 | Edge Function do agente (modo determinístico) | T06, T08 | em andamento | |
 | T18b | Edge Function de catálogo e estado dos dados | T18 | pendente | |
 | T19 | Classificador de intenção com LLM | T18 | pendente | |
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
