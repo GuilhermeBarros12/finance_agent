@@ -1,0 +1,10 @@
+{
+  "results": [
+    {
+      "symbol": "TEST4",
+      "currency": "BRL",
+      "regularMarketPrice": 1234.5,
+      "regularMarketTime": "2026-11-13T17:07:00-03:00"
+    }
+  ]
+}
