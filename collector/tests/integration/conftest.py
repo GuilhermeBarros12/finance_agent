@@ -47,6 +47,7 @@ class Db:
     collector_url: str
     admin: psycopg.Connection
     baseline: dict = field(default_factory=dict)
+    had_residual_role: bool = False
 
     def one(self, sql: str, *params):
         row = self.admin.execute(sql, params).fetchone()
@@ -76,6 +77,17 @@ def _restore(db: Db) -> None:
         cur.execute("delete from public.assets where symbol = any(%s)", (list(EXTRA_ASSETS),))
 
 
+def reset_collector_role(admin: psycopg.Connection) -> bool:
+    """Remove login/senha residuais de uma execução morta (SIGKILL). True se havia resíduo."""
+    row = admin.execute(
+        "select rolcanlogin, rolpassword is not null from pg_authid where rolname = 'collector_ingest'"
+    ).fetchone()
+    residual = bool(row and (row[0] or row[1]))
+    if residual:
+        admin.execute("alter role collector_ingest nologin password null")
+    return residual
+
+
 @pytest.fixture
 def db() -> Iterator[Db]:
     admin_url = os.environ[ADMIN_URL_ENV]
@@ -89,6 +101,7 @@ def db() -> Iterator[Db]:
     )
     state = Db(admin_url, collector_url, admin)
     try:
+        state.had_residual_role = reset_collector_role(admin)
         admin.execute(f"alter role collector_ingest login password '{password}'")
         active = admin.execute(
             "select snapshot_id, updated_at from public.active_snapshot where universe = 'stocks'"

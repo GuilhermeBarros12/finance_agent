@@ -309,3 +309,16 @@ def test_papel_do_coletor_nao_le_dados_publicados(db):
         pytest.raises(psycopg.errors.InsufficientPrivilege),
     ):
         conn.execute("select count(*) from public.snapshots")
+
+
+@pytest.mark.integration
+def test_reset_collector_role_removes_residual_login(db) -> None:
+    from conftest import reset_collector_role
+
+    # a fixture deixou o papel com login e senha (como após uma execução morta por SIGKILL)
+    assert reset_collector_role(db.admin) is True
+    assert reset_collector_role(db.admin) is False
+    row = db.admin.execute(
+        "select rolcanlogin, rolpassword is null from pg_authid where rolname = 'collector_ingest'"
+    ).fetchone()
+    assert row == (False, True)

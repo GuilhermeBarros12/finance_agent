@@ -49,7 +49,7 @@ def _store(errors, sleeps, retries=None):
     "error", [psycopg.errors.DeadlockDetected, psycopg.errors.LockNotAvailable]
 )
 def test_repete_em_deadlock_e_lock_timeout_com_espera_crescente(error):
-    sleeps: list[float] = []
+    sleeps: list[int] = []
     retries: list[tuple] = []
     store = _store([error(), error()], sleeps, retries)
     assert store.publish(RUN, {}) == "11111111-1111-4111-8111-111111111111"
@@ -58,7 +58,7 @@ def test_repete_em_deadlock_e_lock_timeout_com_espera_crescente(error):
 
 
 def test_desiste_depois_do_limite_de_tentativas():
-    sleeps: list[float] = []
+    sleeps: list[int] = []
     store = _store([psycopg.errors.DeadlockDetected() for _ in range(10)], sleeps)
     with pytest.raises(StoreError, match="40P01"):
         store.publish(RUN, {})
@@ -66,7 +66,7 @@ def test_desiste_depois_do_limite_de_tentativas():
 
 
 def test_erro_nao_transitorio_nao_e_repetido():
-    sleeps: list[float] = []
+    sleeps: list[int] = []
     store = _store([psycopg.errors.IntegrityConstraintViolation("cobertura insuficiente")], sleeps)
     with pytest.raises(PublishRejected):
         store.publish(RUN, {})

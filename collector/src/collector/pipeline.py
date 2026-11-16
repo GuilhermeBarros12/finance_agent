@@ -180,15 +180,21 @@ class Pipeline:
         observations: list[Observation] = []
         failures: list[SourceFailure] = []
         universe = set(self._universe)
+        seen_outside: set[tuple[str, str]] = set()  # (asset_id, source_id): uma falha por par
         for adapter in adapters:
             result = self._collect_source(adapter)
             failures.extend(result.failures)
             for obs in result.observations:
                 if obs.asset_id not in universe:
                     # o motor lança ValueError para ativo fora do universo: descartar aqui
-                    failures.append(
-                        _source_failure(obs.asset_id, adapter.source_id, "ativo fora do universo")
-                    )
+                    key = (obs.asset_id, adapter.source_id)
+                    if key not in seen_outside:
+                        seen_outside.add(key)
+                        failures.append(
+                            _source_failure(
+                                obs.asset_id, adapter.source_id, "ativo fora do universo"
+                            )
+                        )
                     continue
                 observations.append(obs)
         return observations, failures

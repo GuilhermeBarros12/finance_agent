@@ -1,7 +1,7 @@
 -- T15: collector_batch_done_on (guarda de um lote por dia). Roda como postgres; dados sintéticos.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(10);
 grant collector_ingest to current_user;
 grant usage on schema extensions to collector_ingest, authenticated, anon;
 
@@ -26,6 +26,12 @@ insert into public.collection_runs (id, started_at, finished_at, status)
 values ('c0000000-0000-4000-8000-0000000000f1', '2030-01-02T01:00:00Z', '2030-01-02T01:30:00Z', 'partial');
 select is(public.collector_batch_done_on('2030-01-01'), true, '01:30Z de 02/01 é 22:30 de 01/01 em Brasília');
 select is(public.collector_batch_done_on('2030-01-02'), false, 'e não conta como 02/01');
+
+-- Execução que cruza a meia-noite de Brasília conta no dia em que começou (started_at).
+insert into public.collection_runs (id, started_at, finished_at, status)
+values ('c0000000-0000-4000-8000-0000000000f3', '2030-03-01T02:30Z', '2030-03-01T03:30Z', 'succeeded');
+select is(public.collector_batch_done_on('2030-02-28'), true, 'começou 23:30 de 28/02 em Brasília: conta em 28/02');
+select is(public.collector_batch_done_on('2030-03-01'), false, 'terminou 00:30 de 01/03, mas não conta em 01/03');
 
 -- Execução em andamento ou falha não conta como lote concluído.
 insert into public.collection_runs (id, started_at, status)

@@ -71,9 +71,9 @@ def call_with_retry[T](
     fn: Callable[[], T],
     *,
     max_attempts: int = MAX_ATTEMPTS,
-    base_delay: float = BASE_DELAY_SECONDS,
-    sleep: Callable[[float], None] = time.sleep,
-    on_retry: Callable[[int, str, float], None] | None = None,
+    base_delay: int = BASE_DELAY_SECONDS,
+    sleep: Callable[[int], None] = time.sleep,
+    on_retry: Callable[[int, str, int], None] | None = None,
 ) -> T:
     """Repete `fn` em 40P01 e 55P03, com espera crescente (base, 2x, 4x...)."""
     attempt = 1
@@ -168,10 +168,10 @@ class PostgresStore:
         self,
         database_url: str,
         *,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[int], None] = time.sleep,
         max_attempts: int = MAX_ATTEMPTS,
-        base_delay: float = BASE_DELAY_SECONDS,
-        on_retry: Callable[[int, str, float], None] | None = None,
+        base_delay: int = BASE_DELAY_SECONDS,
+        on_retry: Callable[[int, str, int], None] | None = None,
     ) -> None:
         self._url = database_url
         self._sleep = sleep
