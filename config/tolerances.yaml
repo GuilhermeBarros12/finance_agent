@@ -1,0 +1,32 @@
+# Tolerâncias do README 7.4. ILUSTRATIVAS: não calibradas nem recomendação financeira.
+# Alterar exige nova versão e justificativa; aumentar o limite só para eliminar alerta é defeito.
+version: "draft-1"
+comparison: "max_absolute_or_relative"
+
+# Modo de calibragem (T14, passo 5): ligado, o motor calcula delta_abs e limite, mas nunca
+# grava verified nem divergent (grava single_source com reason "uncalibrated"). Só o autor
+# desliga, depois da calibragem da T17.
+validation:
+  calibration_mode: true
+
+metrics:
+  quote_price:
+    unit: BRL
+    atol: "0.05"
+    rtol: "0.005"
+  price_to_book:
+    unit: ratio
+    atol: "0.02"
+    rtol: "0.02"
+  price_to_earnings:
+    unit: ratio
+    atol: "0.10"
+    rtol: "0.03"
+  dividend_yield:
+    unit: percent
+    atol: "0.20"
+    rtol: "0"
+  roe:
+    unit: percent
+    atol: "0.50"
+    rtol: "0"

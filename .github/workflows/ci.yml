@@ -179,6 +179,35 @@ jobs:
           else
             echo "::warning::Nenhum teste pgTAP encontrado em supabase/tests/database."
           fi
+      # Os testes de integração do coletor precisam de um banco de verdade e são
+      # pulados sem ele. Aqui o Supabase local já está no ar, então rodam de fato.
+      # A URL usa as credenciais públicas e fixas do Supabase local da CLI.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: needs.detect.outputs.python == 'true'
+        with:
+          python-version: "3.12"
+      - name: Testes de integração do coletor com o banco
+        if: needs.detect.outputs.python == 'true'
+        env:
+          COLLECTOR_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          if ! grep -rqs 'integration' collector/tests/integration; then
+            echo "::warning::Nenhum teste de integração do coletor encontrado."
+            exit 0
+          fi
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --require-hashes -r requirements-dev.lock
+          python -m pip install --no-deps -e .
+          set -o pipefail
+          python -m pytest -m integration -rs -q | tee integration.log
+          if grep -qE '[0-9]+ skipped' integration.log; then
+            echo "::error::Testes de integração foram pulados. Eles devem rodar contra o banco local."
+            exit 1
+          fi
+          if ! grep -qE '[0-9]+ passed' integration.log; then
+            echo "::error::Nenhum teste de integração foi executado."
+            exit 1
+          fi
 
   ci-ok:
     # Único check a exigir na proteção da branch: falha se qualquer job acima falhar.

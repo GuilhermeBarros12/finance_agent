@@ -1,0 +1,19 @@
+{
+  "asset_id": "DEMO3",
+  "metric": "dividend_yield",
+  "status": "verified",
+  "freshness": "fresh",
+  "selected_observation_id": "obs-a",
+  "observation_ids": [
+    "obs-a",
+    "obs-b"
+  ],
+  "comparison": {
+    "delta_abs": "0.10",
+    "limit": "0.20",
+    "atol": "0.20",
+    "rtol": "0",
+    "tolerance_version": "draft-1"
+  },
+  "reason": null
+}

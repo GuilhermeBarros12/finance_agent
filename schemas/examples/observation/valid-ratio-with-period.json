@@ -1,0 +1,21 @@
+{
+  "observation_id": "obs-test4-pvp",
+  "asset_id": "TEST4",
+  "asset_class": "stock",
+  "metric": "price_to_book",
+  "raw_value": "1,05",
+  "value_decimal": "1.05",
+  "unit": "ratio",
+  "currency": null,
+  "period_start": "2025-09-30",
+  "period_end": "2026-09-30",
+  "reference_at": "2026-09-18",
+  "collected_at": "2026-09-18T21:00:00Z",
+  "source_id": "fundamentus",
+  "source_url": "https://example.com/fonte-a/demo3",
+  "upstream_source": null,
+  "methodology_id": "dy_ttm_fixture",
+  "run_id": "run-2026-09-18",
+  "parser_version": "0.1.0",
+  "raw_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

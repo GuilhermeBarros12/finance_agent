@@ -1,0 +1,10 @@
+{
+  "asset_id": "DEMO3",
+  "metric": "dividend_yield",
+  "status": "not_applicable",
+  "freshness": "fresh",
+  "selected_observation_id": null,
+  "observation_ids": [],
+  "comparison": null,
+  "reason": "ativo não paga dividendos"
+}

@@ -377,7 +377,7 @@ Ordem sugerida para a execução autônoma: T02, T03, T05, T06, T07, T08, T10, T
      - duas, comparáveis, dentro do limite: `verified`, com `selected_observation_id` igual à do Fundamentus (D19);
      - duas, comparáveis, fora do limite: `divergent`, com `selected_observation_id` nulo.
   4. `config/tolerances.yaml` com os valores do README 7.4 para os cinco campos e `version: "draft-1"`.
-  5. **Modo de calibragem:** uma opção `validation.calibration_mode` em configuração. Quando ligada, o motor calcula e grava `delta_abs` e o limite, mas grava o estado `single_source` no lugar de `verified` e `divergent`, com `reason: "uncalibrated"`. Assim nenhum selo aparece antes de a T17 terminar. Comece com a opção **ligada**.
+  5. **Modo de calibragem:** uma opção `validation.calibration_mode` em configuração. Quando ligada, o motor calcula a comparação, mas grava o estado `incomparable` no lugar de `verified` e `divergent`, com as duas observações, sem escolher lado, com `reason` começando por `uncalibrated:` e com a comparação em `comparison` (`delta_abs`, `limit`, `atol`, `rtol`, `tolerance_version`). Assim nenhum selo aparece antes de a T17 terminar, as duas fontes continuam visíveis e os números ficam em campos próprios (decisão da pendência P-17, que substituiu o `single_source` do texto original). Comece com a opção **ligada**.
   6. `freshness`: calcule a partir de `collected_at` do snapshot e de dias úteis (segunda a sexta). Mais de 1 dia útil é `stale`; mais de 5 é `expired` (D20). Feriados não são considerados nesta fatia; registre essa limitação no código e no README.
 - **Pronto quando:** há um teste para cada um dos sete estados; os dois exemplos numéricos do README 7.4 passam; um teste confirma que, com o modo de calibragem ligado, nenhum resultado sai `verified` ou `divergent`.
 
@@ -414,7 +414,7 @@ Ordem sugerida para a execução autônoma: T02, T03, T05, T06, T07, T08, T10, T
 - **Objetivo:** fixar `atol` e `rtol` com base em dados reais.
 - **Passos:**
   1. Deixe o lote rodar por pelo menos 10 dias úteis com `calibration_mode` ligado.
-  2. Escreva `scripts/analyze_deltas.py`, que lê as comparações gravadas e gera, por métrica: quantidade de pares, mediana, percentis 90 e 99 de `delta_abs`, e os casos acima do limite `draft-1`.
+  2. Escreva `scripts/analyze_deltas.py`, que lê as comparações gravadas em `field_validations` (linhas `incomparable` com `reason` começando por `uncalibrated:`; colunas `delta_abs`, `limit_value`, `atol`, `rtol` e `tolerance_version`) e gera, por métrica: quantidade de pares, mediana, percentis 90 e 99 de `delta_abs`, e os casos acima do limite `draft-1`.
   3. Grave o resultado em `docs/source-methodologies/calibragem-tolerancias.md`, com uma proposta de valores e a justificativa.
 - **HUMANO:** aprovar os valores. O agente então atualiza `config/tolerances.yaml` para `version: "1"` e desliga `calibration_mode`.
 - **Pronto quando:** o relatório existe, o autor aprovou e o lote seguinte produz estados `verified` e `divergent`.

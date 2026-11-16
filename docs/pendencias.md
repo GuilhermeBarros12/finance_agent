@@ -25,9 +25,14 @@ Quando resolver um item, marque a caixa e, se ele liberar uma tarefa, mude o est
 - [ ] **P-08 — Proteger a `main`.** Settings, Rules, Rulesets: exigir pull request e o check `CI ok`.
 - [ ] **P-09 — Conferir a licença e o contato de segurança.** A T02 usa "Guilherme" como titular da licença MIT e o recurso "Report a vulnerability" do GitHub como canal do `SECURITY.md`. Ative esse recurso em Settings, Advanced Security, "Private vulnerability reporting", ou troque o canal.
 - [ ] **P-10 — Benchmark do PDF.** O branch `claude/happy-edison-uqdci8` tem o protótipo, sem pull request. Decidir se roda o benchmark agora ou junto da fatia de PDF.
+- [x] **P-11 — Destravar a T06.** Liberada em 2026-11-14 para uma terceira rodada de correção (ver a nota em `docs/bloqueios.md`). Três correções pequenas (offset de fuso, substituto UTF-16, contagens em `docs/tarefas/T06.md`) em `tarefa/T06`; ver `docs/bloqueios.md`. **Libera:** T08, T10 e a cadeia seguinte.
+- [x] **P-12 — Decidir o guarda do bundle.** Resolvida em 2026-11-14: o autor aprovou trocar `sb_secret_` por `sb_secret_[A-Za-z0-9_-]{20,}` em `scripts/ci/check_bundle.sh`, e a troca foi feita em `fatia-acoes`. **Libera:** o PR da T21a (branch `tarefa/T21a`).
+- [ ] **P-16 — Confirmar o contrato da brapi.** A execução autônoma não conseguiu ler a documentação oficial (`https://brapi.dev/docs/acoes/cotacao`): o host não resolve na sessão. O adaptador da T11 assume `results`, `symbol`, `regularMarketPrice`, `regularMarketTime`, `currency`, instante em ISO 8601 com fuso e token em `Authorization: Bearer`. Conferir o caminho, os nomes dos campos e o formato do instante e, se divergirem, trocar as constantes no topo de `collector/src/collector/sources/brapi.py` e a fixture em `collector/tests/fixtures/brapi/`. **Libera:** a coleta real (T16).
+- [x] **P-17 — Decidir a calibragem da T14.** Resolvida em 2026-11-16, com aprovação do autor: no modo de calibragem o campo é gravado como `incomparable`, com as duas observações, sem escolher lado, e com a comparação em colunas próprias (`delta_abs`, `limit_value`, `atol`, `rtol`, `tolerance_version`). A segunda fonte deixou de ser descartada e a T17 lê números, não texto. Ver a seção "Atualização" de `docs/tarefas/T14.md` e a migration `20261116000003_calibration_comparison.sql`.
+- [ ] **P-18 — Registrar a limitação de feriados no README.** A T14 calcula o frescor em dias úteis (segunda a sexta) sem calendário de feriados, e o plano pede o registro também no README. Está no código (`collector/src/collector/validation/engine.py`) e em `docs/tarefas/T14.md`; a execução autônoma não edita o README. Acrescentar uma frase na seção 12.6.
 
 ## Para o futuro
 
-- [ ] **P-11 — Carteira com ações fora do universo.** Hoje a carteira só aceita ações já coletadas (ADR 0002, E14).
-- [ ] **P-12 — Segundo provedor de LLM.** Escolher por teste, sem Gemini presumido (ADR 0001, D6).
+- [ ] **P-14 — Carteira com ações fora do universo.** Hoje a carteira só aceita ações já coletadas (ADR 0002, E14).
+- [ ] **P-15 — Segundo provedor de LLM.** Escolher por teste, sem Gemini presumido (ADR 0001, D6).
 - [ ] **P-13 — Redistribuição dos dados da brapi.** Os termos proíbem. Reavaliar antes de abrir a aplicação a outras pessoas.

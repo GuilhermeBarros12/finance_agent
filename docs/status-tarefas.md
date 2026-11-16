@@ -18,27 +18,27 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | ID | Tarefa | Depende de | Estado | Pull request |
 | --- | --- | --- | --- | --- |
 | T01 | Revisar termos e `robots.txt` das fontes | — | concluída | [#2](https://github.com/GuilhermeBarros12/finance_agent/pull/2), [#4](https://github.com/GuilhermeBarros12/finance_agent/pull/4) |
-| T02 | Licença MIT e proteção de segredos | — | pendente | |
-| T03 | Atualizar o README com as decisões | — | pendente | |
+| T02 | Licença MIT e proteção de segredos | — | concluída | [#6](https://github.com/GuilhermeBarros12/finance_agent/pull/6) |
+| T03 | Atualizar o README com as decisões | — | concluída | [#7](https://github.com/GuilhermeBarros12/finance_agent/pull/7) |
 | T04 | Escolher o universo de tickers | — | concluída | |
-| T05 | Inicializar a estrutura do repositório | T02 | pendente | |
-| T06 | Schema único de observação e validação | T05 | pendente | |
-| T07 | Metodologia provisória dos campos | T05 | pendente | |
-| T08 | Migrations do banco | T05, T06 | pendente | |
-| T09 | RPC de publicação e papel dedicado | T08 | pendente | |
-| T10 | Base do coletor e normalização | T06 | pendente | |
-| T11 | Adaptador brapi | T10 | pendente | |
+| T05 | Inicializar a estrutura do repositório | T02 | concluída | [#8](https://github.com/GuilhermeBarros12/finance_agent/pull/8) |
+| T06 | Schema único de observação e validação | T05 | concluída | [#11](https://github.com/GuilhermeBarros12/finance_agent/pull/11) |
+| T07 | Metodologia provisória dos campos | T05 | concluída | [#9](https://github.com/GuilhermeBarros12/finance_agent/pull/9) |
+| T08 | Migrations do banco | T05, T06 | concluída | [#13](https://github.com/GuilhermeBarros12/finance_agent/pull/13) |
+| T09 | RPC de publicação e papel dedicado | T08 | concluída | [#15](https://github.com/GuilhermeBarros12/finance_agent/pull/15) |
+| T10 | Base do coletor e normalização | T06 | concluída | [#14](https://github.com/GuilhermeBarros12/finance_agent/pull/14) |
+| T11 | Adaptador brapi | T10 | concluída | [#16](https://github.com/GuilhermeBarros12/finance_agent/pull/16) |
 | T12 | Adaptador Fundamentus | T07, T10 | bloqueada (P-01) | |
 | T13 | Adaptador StatusInvest | T07, T10 | bloqueada (P-01) | |
-| T14 | Validação por campo | T07, T10 | pendente | |
-| T15 | Pipeline, CLI e publicação | T09, T11, T14 | pendente | |
+| T14 | Validação por campo | T07, T10 | concluída | [#17](https://github.com/GuilhermeBarros12/finance_agent/pull/17) |
+| T15 | Pipeline, CLI e publicação | T09, T11, T14 | concluída | [#18](https://github.com/GuilhermeBarros12/finance_agent/pull/18) |
 | T16 | Workflow diário e alerta de idade | T15, T22a | fora da leva | |
 | T17 | Experimento de calibragem das tolerâncias | T16 | fora da leva | |
-| T18 | Edge Function do agente (modo determinístico) | T06, T08 | pendente | |
-| T18b | Edge Function de catálogo e estado dos dados | T18 | pendente | |
+| T18 | Edge Function do agente (modo determinístico) | T06, T08 | concluída | [#19](https://github.com/GuilhermeBarros12/finance_agent/pull/19) |
+| T18b | Edge Function de catálogo e estado dos dados | T18 | concluída | [#20](https://github.com/GuilhermeBarros12/finance_agent/pull/20) |
 | T19 | Classificador de intenção com LLM | T18 | pendente | |
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
-| T21a | Fundação do front e guia de design | T05 | pendente | |
+| T21a | Fundação do front e guia de design | T05 | concluída | [#12](https://github.com/GuilhermeBarros12/finance_agent/pull/12) |
 | T21b | Login e conversas | T21a, T08 | pendente | |
 | T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | pendente | |
 | T21d | Carteira | T21c | pendente | |

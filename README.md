@@ -1,7 +1,7 @@
 # Agente de Investimentos
 
 ![Status: em desenvolvimento](https://img.shields.io/badge/status-em%20desenvolvimento-orange)
-[![Licença: MIT proposta](https://img.shields.io/badge/licen%C3%A7a-MIT%20%28proposta%29-yellow)](#licenca)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green)](#licenca)
 ![Coleta: Python](https://img.shields.io/badge/coleta-Python-3776AB)
 ![Aplicação: TypeScript](https://img.shields.io/badge/aplica%C3%A7%C3%A3o-TypeScript-3178C6)
 ![Persistência: Supabase](https://img.shields.io/badge/persist%C3%AAncia-Supabase-3ECF8E)
@@ -79,6 +79,8 @@ As respostas devem indicar a data-base, a situação de atualização, a cobertu
 
 Não é uma plataforma de negociação, um terminal de cotações em tempo real, um gestor de carteira nem um mecanismo de recomendação personalizada. A v1 não exige conexão com corretoras, saldo, posição de custódia ou credenciais bancárias.
 
+A aplicação tem uma carteira, mas ela guarda apenas os símbolos das ações, sem quantidade, preço de compra nem valor. Isso não a torna um gestor de carteira: ela serve para atualizar de uma vez os indicadores das ações escolhidas, e nunca é enviada ao LLM (ADR 0002, E14 a E16).
+
 A futura experiência inspirada em NotebookLM corresponde a **respostas apoiadas em documentos identificáveis**, com página e trecho de origem. Não existe integração com NotebookLM nem pipeline de RIs implementado na v1.
 
 ---
@@ -106,6 +108,8 @@ Se “100% open source” for uma restrição literal também para modelos e inf
 | Indicadores de FIIs | A presença de campos no Fundamentus não comprova disponibilidade equivalente no StatusInvest. | **Decidido:** FFO yield, cap rate e vacância permanecem na v1; sem campo equivalente homologado no StatusInvest, a observação utilizável fica `single_source`, sem bloquear a entrega do campo nem forçar `verified`. |
 | PDF em Edge Functions | A execução definida usa o runtime Deno das Edge Functions. | **Decidido:** manter `pdf-lib` nativo em Deno, sem mini-backend Python. Testes de consumo e paginação continuam necessários, mas a escolha do renderizador não está pendente. |
 | Login no beta | O método de autenticação da fase de beta foi confirmado. | **Decidido:** Google OAuth via Supabase Auth como método único. E-mail/senha e outros métodos não são alternativas de login no beta hospedado. |
+| Primeira entrega | O escopo completo da v1 é grande demais para uma única entrega verificável. | **Decidido** em [`docs/adr/0001-primeira-fatia-acoes.md`](docs/adr/0001-primeira-fatia-acoes.md): a entrega começa por uma fatia vertical só de ações. Onde o ADR e este README divergem, vale o ADR. |
+| Execução autônoma | A primeira fatia é construída por agentes de código, sem acesso a serviços hospedados. | **Decidido** em [`docs/adr/0002-execucao-autonoma.md`](docs/adr/0002-execucao-autonoma.md): o alvo é o sistema funcionando em ambiente local, com dados sintéticos e LLM simulado. O ADR 0002 prevalece sobre o ADR 0001. |
 
 Fontes: [CSV oficial do Tesouro Transparente][tesouro-csv], [descontinuações da Groq][groq-deprecations], [cotas da Groq][groq-limits], [cotas do Gemini][gemini-limits], [limites das Edge Functions][supabase-edge-limits], [PDF-LIB][pdf-lib] e [login Google no Supabase][supabase-google].
 
@@ -130,7 +134,7 @@ O adaptador `treasury_official.py` deverá integrar o coletor Python e mapear t�
 
 | Funcionalidade | Versão | Estado | Critério de conclusão |
 | --- | --- | --- | --- |
-| Login multiusuário | v1 | Planejado | Google OAuth como login único no beta; usuário autenticado e autorizado acessa somente seus dados. |
+| Login multiusuário | v1 | Planejado (usuário único na primeira fatia) | Google OAuth como login único no beta; usuário autenticado e autorizado acessa somente seus dados. Na primeira fatia há um só usuário, o autor (D7). |
 | Conversas e mensagens persistentes | v1 | Planejado | Recarregar, sair e entrar novamente não apaga o histórico. |
 | Cotação de ações via brapi | v1 | Planejado | Dado armazenado no lote diário com fonte e data de mercado. |
 | Cotações de ETFs | v1 | Planejado | Cotação via brapi no lote diário, com fonte, data-base e estado de validação, sob os mesmos critérios de qualidade dos demais ativos. |
@@ -184,7 +188,7 @@ flowchart TB
         edge["Edge Functions: autenticação e lógica determinística"]
         storage["Storage privado: PDFs"]
         groq["Groq: openai/gpt-oss-120b em avaliação"]
-        gemini["Gemini: fallback autorizado"]
+        gemini["Segundo provedor de LLM: a definir por teste"]
         validate -->|"publicação transacional"| db
         edge -->|"cliente com JWT do usuário"| db
         edge --> groq
@@ -267,8 +271,10 @@ As escolhas abaixo definem uma implementação de referência, não uma lista de
 | Backend | [Supabase Edge Functions][supabase-edge-auth] | Endpoints em TypeScript e execução sob demanda. |
 | Runtime | [Deno](https://deno.com/) | Runtime da implementação TypeScript das funções. |
 | LLM primário | [Groq](https://console.groq.com/docs) | `openai/gpt-oss-120b` como candidato definido, configurado por ambiente e ainda em avaliação de qualidade. |
-| LLM alternativo | [Gemini API](https://ai.google.dev/gemini-api/docs) | Fallback condicionado a disponibilidade e política de dados. |
+| LLM alternativo | A definir | O segundo provedor será escolhido por teste; o Gemini não é o fallback presumido. A primeira fatia não tem fallback de LLM (D6). |
 | Frontend | [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vite.dev/) | Aplicação própria e build estático. |
+| Interface | [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) | Estilos e componentes da interface; tokens definidos em `docs/design.md` (ADR 0002, E8). |
+| Rotas e dados | [React Router](https://reactrouter.com/), [TanStack Query](https://tanstack.com/query) | Rotas do frontend e leitura/escrita de dados, sem biblioteca de estado global (ADR 0002, E18). |
 | SDK | [supabase-js](https://supabase.com/docs/reference/javascript/introduction) | Auth, banco, Storage e chamadas às funções. |
 | Contratos TypeScript | [Zod](https://zod.dev/) | Validação de entrada e de respostas dos modelos. |
 | PDF | [PDF-LIB][pdf-lib] | Escolha decidida: geração nativa no runtime Deno das Edge Functions, a partir de modelo estruturado. |
@@ -825,21 +831,23 @@ authenticate
   -> persist_response
 ```
 
-O LLM redige explicações; não coleta valores, não decide tolerâncias e não modifica a base de mercado.
+Na primeira fatia, o LLM apenas classifica a intenção da pergunta e devolve um JSON fechado, validado por schema (D4). Ele não redige explicações, não fornece números nem URLs, não coleta valores, não decide tolerâncias e não modifica a base de mercado. As respostas são tabelas e textos determinísticos. A etapa `optionally_call_fallback` não existe na primeira fatia (D6).
 
-Para perguntas simples ou indisponibilidade de modelo, a aplicação pode responder com tabelas e textos determinísticos. O usuário deve ver que o modo explicativo por IA não foi utilizado.
+Se o JSON for inválido, a cota acabar ou o provedor falhar, a interface oferece um **seletor manual** de tickers e indicadores, e a consulta nunca fica bloqueada (D5). Para perguntas simples ou indisponibilidade de modelo, a aplicação responde com tabelas e textos determinísticos. O usuário deve ver que o modo explicativo por IA não foi utilizado.
 
 ### 9.2 Modelos configuráveis
 
 **Candidato primário definido:** usar `openai/gpt-oss-120b` na Groq, em substituição ao `llama-3.3-70b-versatile` previsto no desenho original e registrado como descontinuado nesta documentação. O modelo antigo não deve permanecer como default nem como fallback implícito.
 
-Definir `GROQ_MODEL=openai/gpt-oss-120b` e configurar `GEMINI_MODEL` explicitamente quando o fallback estiver habilitado. A escolha do candidato está fechada, mas a **adoção definitiva ainda depende dos testes de qualidade em português, estrutura de saída, latência e consumo**. A disponibilidade e as cotas efetivas devem ser verificadas antes do deploy. [Referências][groq-deprecations] e [cotas][groq-limits].
+Definir `GROQ_MODEL=openai/gpt-oss-120b`. A escolha do candidato está fechada, mas a **adoção definitiva ainda depende dos testes de qualidade em português, estrutura de saída, latência e consumo**. A disponibilidade e as cotas efetivas devem ser verificadas antes do deploy. [Referências][groq-deprecations] e [cotas][groq-limits].
 
-Para Gemini, escolher um modelo textual da família Flash disponível no projeto e na faixa gratuita. Não assumir que qualquer versão com “Flash” no nome tem as mesmas cotas. [Preços][gemini-pricing] e [limites][gemini-limits].
+**Segundo provedor:** será escolhido por teste, e o Gemini não é o fallback presumido (D6). A primeira fatia não tem fallback de LLM. Quando um segundo provedor for adotado, escolher um modelo disponível na faixa gratuita e não assumir cotas pelo nome do modelo. Como referência, [preços][gemini-pricing] e [limites][gemini-limits] do Gemini, um dos candidatos.
 
 A implantação deve falhar de forma clara se o modelo configurado não existir ou não puder ser usado. Não migrar automaticamente para modelo pago.
 
 ### 9.3 Política de fallback
+
+A primeira fatia não tem fallback de LLM (D6): a tabela abaixo descreve o comportamento desejado quando um segundo provedor, escolhido por teste, for adotado. Sem ele, o primário indisponível leva ao modo determinístico e ao seletor manual (D5).
 
 | Situação | Comportamento |
 | --- | --- |
@@ -990,7 +998,7 @@ A v1 não presume um worker de PDF continuando após o encerramento da função.
 ```text
 agente-investimentos/
 |-- README.md
-|-- LICENSE.example                  # MIT proposta; confirmar antes de publicar LICENSE
+|-- LICENSE.example                  # MIT (arquivo LICENSE criado na T02)
 |-- CONTRIBUTING.md                  # A criar
 |-- SECURITY.md                      # A criar com canal privado válido
 |-- .gitignore
@@ -1124,8 +1132,7 @@ Criar a partir de `.env.collector.example`. Campos intencionalmente vazios:
 
 ```dotenv
 APP_ENV=
-SUPABASE_URL=
-SUPABASE_SECRET_KEY=
+COLLECTOR_DATABASE_URL=
 BRAPI_TOKEN=
 SCRAPER_CONTACT=
 ```
@@ -1133,14 +1140,13 @@ SCRAPER_CONTACT=
 | Variável | Uso |
 | --- | --- |
 | `APP_ENV` | Ambiente validado: desenvolvimento, testes hospedados ou produção. |
-| `SUPABASE_URL` | Endpoint do projeto correspondente ao ambiente. |
-| `SUPABASE_SECRET_KEY` | Credencial administrativa de ingestão; nunca enviada ao frontend. |
+| `COLLECTOR_DATABASE_URL` | String de conexão do papel de banco dedicado `collector_ingest`, que só pode executar a RPC de publicação; corresponde ao ambiente (D13). Nunca enviada ao frontend. |
 | `BRAPI_TOKEN` | Autenticação da brapi para cotações de ações e ETFs; não é utilizado pelo adaptador de Tesouro. |
 | `SCRAPER_CONTACT` | Contato técnico usado na identificação do coletor, quando aplicável. |
 
-Em projetos legados, a chave `service_role` pode ser mapeada pelo adaptador como credencial administrativa. Não confundir esse valor com a chave pública `anon`.
+A chave `service_role` do Supabase não é usada pelo coletor nem vai para os secrets do GitHub, pois ignora RLS e daria acesso às conversas (D13). A credencial do coletor é um papel de banco dedicado, com permissão exclusiva de executar a RPC de publicação e sem acesso a conversas.
 
-A credencial administrativa de ingestão é sensível porque pode contornar RLS. Mantê-la apenas em execução confiável. Uma evolução recomendada é substituí-la por credencial de banco com permissão exclusiva de ingestão e publicação, sem acesso a conversas.
+A string de conexão ainda é sensível. Mantê-la apenas em execução confiável.
 
 ### 12.3 Edge Functions: `supabase/.env.functions`
 
@@ -1149,9 +1155,6 @@ APP_ENV=
 APP_ORIGINS=
 GROQ_API_KEY=
 GROQ_MODEL=openai/gpt-oss-120b
-GEMINI_API_KEY=
-GEMINI_MODEL=
-ENABLE_GEMINI_FALLBACK=
 MOCK_LLM=
 ```
 
@@ -1159,13 +1162,11 @@ MOCK_LLM=
 | --- | --- |
 | `APP_ORIGINS` | Origens permitidas, separadas por vírgula; correspondência exata. |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Credencial e modelo primário; candidato definido: `openai/gpt-oss-120b`, ainda sujeito à avaliação de qualidade. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Credencial e modelo alternativo, quando habilitado. |
-| `ENABLE_GEMINI_FALLBACK` | Habilitação explícita, adicional às regras de privacidade. |
 | `MOCK_LLM` | Respostas simuladas somente em desenvolvimento/testes locais. |
 
 As variáveis de infraestrutura Supabase são disponibilizadas pelo runtime. Não incluir variáveis reservadas com prefixo `SUPABASE_` no arquivo enviado por `supabase secrets set`; seguir o contrato de [segredos do ambiente][supabase-secrets] e os [limites de nomes reservados][supabase-edge-limits].
 
-O backend deve impedir `MOCK_LLM` no ambiente publicado de uso real. `GEMINI_API_KEY` não é obrigatória quando o fallback está desabilitado.
+O backend deve impedir `MOCK_LLM` no ambiente publicado de uso real. A primeira fatia não tem fallback de LLM (D6), então não há variáveis de segundo provedor; elas serão definidas quando o provedor for escolhido por teste.
 
 ### 12.4 Frontend: `frontend/.env.local`
 
@@ -1184,7 +1185,7 @@ São valores públicos de configuração. Uma chave pública do Supabase não é
 | Local | Configuração |
 | --- | --- |
 | Terminal/CI de deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` e, quando exigido pela operação, `SUPABASE_DB_PASSWORD`. |
-| GitHub Actions de coleta | Segredos `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BRAPI_TOKEN`; variável `SCRAPER_CONTACT`. |
+| GitHub Actions de coleta | Segredos `COLLECTOR_DATABASE_URL` (papel `collector_ingest`), `BRAPI_TOKEN`; variável `SCRAPER_CONTACT`. |
 | Supabase Auth | Client ID e Client Secret do Google OAuth, único provedor de login do beta, configurados no painel de Auth. |
 | Hospedagem do frontend | Somente as variáveis públicas `VITE_*`. |
 
@@ -1201,8 +1202,8 @@ Valores iniciais **propostos**, a implementar em configuração versionada e val
 | Chamadas LLM por solicitação | 3, contando retries e fallback | Evitar ciclos e estouro de cota. |
 | Tamanho da mensagem | 8.000 caracteres | Reduzir abuso e contexto excessivo. |
 | Conversas simultaneamente processadas por usuário | 1 | Simplificar ordem e limitar consumo. |
-| Referência inicial de cache vencido | 36 horas | Aviso; ajustar por calendário e fonte. |
-| Idade máxima para apresentar como informação utilizável | 7 dias | Após isso, somente histórico explicitamente identificado. |
+| Referência inicial de cache vencido (`stale`) | 1 dia útil | Aviso; valor configurável (D20). |
+| Idade máxima para apresentar como informação utilizável (`expired`) | 5 dias úteis | Após isso, somente histórico explicitamente identificado; valor configurável (D20). |
 | Validade da URL assinada | 5 minutos | Reduzir exposição do arquivo privado. |
 | Retenção operacional de snapshots | 30 dias | Limitar armazenamento, preservando evidências já utilizadas. |
 | Modo exclusivamente gratuito | Ativado | Nunca contratar ou habilitar consumo pago automaticamente. |
@@ -1470,15 +1471,14 @@ jobs:
       - name: Coletar, validar e publicar
         env:
           APP_ENV: staging
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          COLLECTOR_DATABASE_URL: ${{ secrets.COLLECTOR_DATABASE_URL }}
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
           SCRAPER_CONTACT: ${{ vars.SCRAPER_CONTACT }}
           COLLECTOR_FORCE: ${{ inputs.force || 'false' }}
         run: python -m collector.cli run
 ```
 
-`COLLECTOR_FORCE` é a entrada do workflow equivalente a `--force`; o CLI deve interpretar o booleano explicitamente. O ambiente `staging` representa o beta hospedado e deve apontar para o projeto correspondente.
+`COLLECTOR_FORCE` é a entrada do workflow equivalente a `--force`; o CLI deve interpretar o booleano explicitamente. O ambiente `staging` representa o beta hospedado e deve apontar para o projeto correspondente. O coletor se conecta com o papel de banco dedicado, não com a chave `service_role` (D13).
 
 As versões de Actions acima seguem os exemplos dos repositórios oficiais consultados. Antes de publicar o workflow definitivo, fixar cada Action em um **SHA completo revisado** e manter atualizações controladas. [Checkout][github-checkout] e [setup-python][github-python].
 
@@ -2115,10 +2115,12 @@ Testar restauração em ambiente separado antes de considerar o backup operacion
 | Homologar o contrato do CSV oficial de Tesouro | Fonte primária e única já decidida: Tesouro Transparente; registrar mapeamento e cobertura para implementar o adaptador próprio. |
 | Homologar fontes de FIIs | Disponibilidade e metodologia registradas por indicador; FFO yield, cap rate e vacância aceitos como `single_source` sem equivalente homologado no StatusInvest. |
 | Revisar uso de dados | Termos e estratégia de coleta/redistribuição documentados. |
-| Avaliar o candidato primário e configurar o fallback | `openai/gpt-oss-120b` já definido como candidato; concluir testes de qualidade, registrar limites e escolher o modelo Gemini quando o fallback for habilitado. |
+| Avaliar o candidato primário e escolher o segundo provedor | `openai/gpt-oss-120b` já definido como candidato; concluir testes de qualidade e registrar limites. O segundo provedor será escolhido por teste, sem presumir o Gemini; a primeira fatia não tem fallback de LLM (D6). |
 | Inicializar repositório | Estrutura, manifests, lockfiles, schemas e CI. |
 
 ### Curto prazo — v1
+
+**Primeira entrega: fatia de ações** (ADR 0001, D1). Coleta, validação, snapshot, backend e chat só para ações, de ponta a ponta, com cotação, P/VP, P/L, dividend yield e ROE, de 10 a 20 tickers. As fatias seguintes replicam o contrato para as demais classes, na ordem em que o ADR 0001 as lista: FIIs, ETFs, Tesouro e PDF. O restante desta seção descreve a v1 completa.
 
 Implementar coleta diária de ações, FIIs, ETFs e Tesouro, incluindo o adaptador próprio do CSV oficial; publicação transacional, proveniência por campo e comparação entre fontes quando aplicável; Google OAuth como login único do beta, RLS, conversas persistentes, agente determinístico, frontend próprio e PDF privado reutilizável com `pdf-lib` no runtime Deno das Edge Functions.
 
@@ -2215,21 +2217,19 @@ Este aviso não substitui a avaliação das obrigações aplicáveis à operaç�
 <a id="licenca"></a>
 ## 24. Licença e autoria
 
-**Licença sugerida para o código: MIT — pendente de confirmação pelo autor.**
+**Licença do código: MIT — confirmada pelo autor.** O arquivo `LICENSE` na raiz traz o texto oficial, com ano 2026 e titular "Guilherme".
 
-Antes de anunciar o repositório como efetivamente licenciado sob MIT:
+Situação das etapas:
 
 ```text
-Confirmar a escolha da licença
-  -> criar LICENSE com o texto oficial
-  -> preencher ano e titular dos direitos
-  -> revisar licenças de dependências e ativos
-  -> atualizar o badge de "MIT proposta" para "MIT"
+Confirmar a escolha da licença            -> feito
+  -> criar LICENSE com o texto oficial    -> feito
+  -> preencher ano e titular dos direitos -> feito
+  -> atualizar o badge para "MIT"         -> feito
+  -> revisar licenças de dependências e ativos -> pendente (P-09)
 ```
 
 Referência: [texto oficial da licença MIT na Open Source Initiative][mit-license].
-
-Enquanto não houver um arquivo `LICENSE` válido, este README não deve ser interpretado como concessão completa da licença MIT.
 
 A licença do código **não relicencia** dados coletados, documentos de RI, marcas, fontes tipográficas, modelos ou serviços externos. Cada material mantém seus próprios termos. O recurso de dados abertos do Tesouro consultado, por exemplo, informa uma licença específica para a base. [Referência][tesouro-csv].
 

@@ -1,0 +1,16 @@
+{
+  "name": "agente-investimentos",
+  "private": true,
+  "license": "MIT",
+  "description": "Ferramentas de repositório do Agente de Investimentos",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "16.0.0",
+    "supabase": "3.1.0"
+  },
+  "scripts": {
+    "gen:types": "node scripts/generate_ts_types.mjs"
+  }
+}
