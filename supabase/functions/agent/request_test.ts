@@ -182,3 +182,41 @@ Deno.test("reserveRun: falha anterior com o mesmo corpo é retomada", async () =
   assertEquals((await reserveRun(f.repo, input, NOW)).kind, "reserved");
   assertEquals(f.calls, ["r1:failed"]);
 });
+
+// ---------------------------------------------------------------- T19: selection opcional
+
+Deno.test("T19: só message é aceito e o hash difere do corpo com selection", async () => {
+  const only = parseAgentRequest({
+    request_id: REQ_1,
+    conversation_id: CONV_ANA,
+    message: "compare o P/VP de DEMO3",
+  });
+  assert(only.ok);
+  assertEquals(only.value.selection, null);
+  const manual = parseAgentRequest(
+    validBody({ message: "compare o P/VP de DEMO3" }),
+  );
+  assert(manual.ok);
+  assertNotEquals(
+    await sha256Hex(canonicalBody(only.value)),
+    await sha256Hex(canonicalBody(manual.value)),
+  );
+});
+
+Deno.test("T19: sem selection e sem message (ausente, nula ou em branco): inválido", () => {
+  for (const message of [undefined, null, "", "  \n "]) {
+    const r = parseAgentRequest({
+      request_id: REQ_1,
+      conversation_id: CONV_ANA,
+      message,
+    });
+    assert(!r.ok);
+    assertEquals(r.issues[0].path, "selection");
+  }
+});
+
+Deno.test("T19: selection presente continua validada (vazia ou nula é inválida)", () => {
+  for (const selection of [null, {}, { asset_ids: [], metrics: ["roe"] }]) {
+    assert(!parseAgentRequest(validBody({ selection, message: "x" })).ok);
+  }
+});
