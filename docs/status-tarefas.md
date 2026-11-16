@@ -30,7 +30,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T11 | Adaptador brapi | T10 | concluída | [#16](https://github.com/GuilhermeBarros12/finance_agent/pull/16) |
 | T12 | Adaptador Fundamentus | T07, T10 | bloqueada (P-01) | |
 | T13 | Adaptador StatusInvest | T07, T10 | bloqueada (P-01) | |
-| T14 | Validação por campo | T07, T10 | pendente | |
+| T14 | Validação por campo | T07, T10 | em revisão | |
 | T15 | Pipeline, CLI e publicação | T09, T11, T14 | pendente | |
 | T16 | Workflow diário e alerta de idade | T15, T22a | fora da leva | |
 | T17 | Experimento de calibragem das tolerâncias | T16 | fora da leva | |
