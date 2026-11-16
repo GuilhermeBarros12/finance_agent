@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Self
@@ -23,7 +22,7 @@ from pydantic import SecretStr
 from collector.contracts import AssetClass, Metric, Observation, SourceFailure, Unit
 from collector.http import FetchError, HttpClient
 from collector.settings import SourceConfig
-from collector.sources.base import RawRecord, SourceAdapter, utc_now
+from collector.sources.base import CollectResult, RawRecord, SourceAdapter, utc_now
 
 # --- Contrato da API (confirmar com a documentação oficial) ---------------------------
 QUOTE_PATH = "/api/v2/stocks/quote"
@@ -55,12 +54,6 @@ _MAX_FUTURE_SKEW = timedelta(minutes=5)
 
 class BrapiParseError(ValueError):
     """Resposta da brapi fora do formato esperado. A mensagem nunca traz token nem URL."""
-
-
-@dataclass
-class CollectResult:
-    observations: list[Observation] = field(default_factory=list)
-    failures: list[SourceFailure] = field(default_factory=list)
 
 
 def _reject_constant(name: str) -> Any:

@@ -9,10 +9,11 @@ from __future__ import annotations
 import hashlib
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Protocol
 
-from collector.contracts import Observation
+from collector.contracts import Observation, SourceFailure
 
 
 @dataclass(frozen=True)
@@ -52,3 +53,19 @@ class SourceAdapter(ABC):
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+@dataclass
+class CollectResult:
+    """Resultado de uma fonte: o que foi coletado e as falhas por ativo (nunca zero)."""
+
+    observations: list[Observation] = field(default_factory=list)
+    failures: list[SourceFailure] = field(default_factory=list)
+
+
+class SourceCollector(Protocol):
+    """O que o pipeline (T15) exige de um adaptador registrado."""
+
+    source_id: str
+
+    def collect(self, assets: Sequence[str]) -> CollectResult: ...
