@@ -33,7 +33,7 @@ Sem acesso para `anon` e `authenticated`: sem grant e sem política. A leitura p
 | `collected_at` | timestamptz | Momento da coleta; não substitui a data-base do dado. |
 | `universe_version` | text, nulo | |
 | `assets_total`, `assets_updated` | integer | `assets_updated <= assets_total`. |
-| `failures` | jsonb | Lista de falhas por ativo e fonte (manifesto de cobertura). |
+| `failures` | jsonb | Lista de falhas por ativo e fonte (manifesto de cobertura). Na publicação o manifesto traz `failures` obrigatório (array de `{asset_id, source_id, reason}` não vazios); a ausência é recusada, nunca vira `[]`. |
 | `published_at` | timestamptz, nulo | Preenchido = publicado e imutável. |
 | `created_at` | timestamptz | |
 
@@ -83,7 +83,26 @@ Estado de validação de um campo de um ativo num snapshot (README 7.5). `unique
 | `created_at` | timestamptz | |
 
 ### `active_snapshot`
-`universe` text pk; `snapshot_id` uuid fk `snapshots`; `updated_at`. Ponteiro para a publicação ativa.
+`universe` text pk; `snapshot_id` uuid fk `snapshots`; `updated_at`. Ponteiro para a publicação ativa. Trigger `active_snapshot_published_only` (T09): só aceita snapshot com `published_at` preenchido e do mesmo `universe`.
+
+### Checks acrescentados pela T09 nas tabelas finais
+- `observations_finite_check`: `value_decimal` não é NaN nem Infinity.
+- `observations_text_check`: `raw_value`, `parser_version` e `methodology_id` não vazios.
+- `observations_time_finite_check`: `collected_at`, `reference_at`, `reference_date`, `period_start` e `period_end` nunca `infinity` nem `-infinity` (null passa onde a coluna é opcional).
+- `field_validations_finite_check`: `delta_abs`, `limit_value`, `atol` e `rtol` não são NaN nem Infinity (null passa).
+- `field_validations_tolerance_text_check`: `tolerance_version` nulo ou não vazio.
+- Datas no futuro NÃO são check de tabela (`now()` não é imutável); a RPC `publish_snapshot` recusa.
+
+### `snapshots` (acréscimo da T09)
+`unique (run_id)`: uma publicação por execução do coletor.
+
+### `staging_observations` (T09)
+Área de preparo do lote. Mesmas colunas de `observations`, exceto `snapshot_id`, `asset_id`, `source_id`: usa `asset_symbol` e `source_code` (ids legíveis do contrato Python) e `run_id` sem FK. `id` é escolhido pelo coletor e preservado em `observations`. Sem `unique` de negócio de propósito: `publish_snapshot` detecta duplicata e recusa o lote. Mesmos checks de unidade, URL, hash, período e texto de `observations`, mais `staging_observations_finite_check` (valor finito), `staging_observations_text_check` (`raw_value`, `parser_version`, `methodology_id` não vazios) e `staging_observations_time_finite_check` (sem instante ou data infinitos). `numeric` para `value_decimal`. RLS ligado; só `collector_ingest` insere (política `with check (true)`); ninguém lê (a função `security definer` lê). Staging de lote publicado é apagado pela RPC; o abandonado expira em `prune_snapshots`.
+
+### `staging_validations` (T09)
+Espelha `field_validations` com `asset_symbol` e `run_id` (sem FK); `selected_observation_id` e `observation_ids` referem-se a `staging_observations.id`. Mesmos checks de estado, comparação e `divergent` sem seleção, mais `staging_validations_finite_check` (delta, limite, atol e rtol finitos), `staging_validations_tolerance_text_check` (`tolerance_version` nulo ou não vazio) e `staging_validations_ids_check` (`observation_ids` unidimensional). Mesmo regime de acesso de `staging_observations`.
+
+**Contrato de uso do staging (importante).** `publish_snapshot` trava `staging_*` em `share row exclusive` e usa um advisory lock; ele é incompatível com insert de staging NÃO confirmado de outra sessão. Portanto: (1) o coletor deve CONFIRMAR (commit) o staging antes de chamar a RPC, de preferência em transação própria; (2) com duas sessões concorrentes, cada uma com insert pendente e chamando a RPC, o Postgres detecta deadlock e aborta uma delas com `40P01` (observado à mão: `deadlock detected`); o coletor deve repetir a chamada nesse erro; (3) uma sessão parada com insert pendente (mesmo de outro run) faz a RPC esperar; ela espera no máximo 30 s (`lock_timeout` aplicado dentro da RPC e restaurado ao fim) e falha com `55P03` (`canceling statement due to lock timeout`), sem esperar os 120 s do `statement_timeout`; o coletor repete mais tarde. Uma única sessão que insere e chama a RPC na mesma transação funciona (coberto nos testes), desde que nenhuma outra tenha insert pendente.
 
 ## Dados privados
 
@@ -111,7 +130,14 @@ Contador global (não por usuário). pk `(usage_date, provider)`; `request_count
 | --- | --- |
 | `public.is_allowed_user()` | `security invoker`, `stable`. Verdadeiro se `auth.uid()` está em `allowed_users` com `enabled`. `execute` revogado de `public` e `anon`; mantido para `authenticated` (as políticas a usam) e `service_role`. |
 | `public.reject_published_snapshot_change()`, `public.reject_truncate()`, `public.touch_updated_at()` | Funções de trigger. `execute` revogado de `public`, `anon` e `authenticated` (`revoke ... from public` não basta: o Supabase concede execute a anon/authenticated por default ACL). Testado com `has_function_privilege`. Padrão para funções `security definer` da T09. |
+| `public.publish_snapshot(p_run_id uuid, p_manifest jsonb) returns uuid` | T09. `security definer`, `search_path = ''`, nomes qualificados. `execute` revogado de `public`, `anon`, `authenticated` e `service_role`; concedido só a `collector_ingest`. Numa transação: trava a execução (`for update`) e serializa por universo (advisory lock); valida e só então copia staging para `snapshots`/`observations`/`field_validations`, trava o snapshot, publica (`published_at`), aponta `active_snapshot`, marca a execução (`succeeded`, ou `partial` se `assets_updated < assets_total`) e limpa o staging do `run_id`. Qualquer erro desfaz tudo e o ponteiro não muda. Recusa: manifesto inválido; execução inexistente, encerrada ou já publicada; zero observações; ativo ou fonte inexistente (símbolo/código não resolvido para uuid); chave `(ativo, métrica, fonte)` duplicada; validação duplicada; menos da metade do `assets_total` com observação; validação cujo `observation_ids` inclua observação de outro run, ativo ou métrica (ou repetida); selecionada fora de `observation_ids`; estado incoerente (`missing`/`invalid`/`not_applicable` com observações; `single_source` sem exatamente 1; `verified`/`divergent` sem 2+ observações de 2+ fontes; `verified` com delta > limite; `divergent` com delta <= limite); observação sem validação do seu campo. Manifesto (contrato da T06, chave extra recusada): `snapshot_id`, `run_id` (igual ao parâmetro), `collected_at` (ISO 8601 com fuso explícito), `universe_version`, `assets_total` (inteiro >= 1), `assets_updated` (igual ao staging) e `failures` (array obrigatório, itens `{asset_id, source_id, reason}` não vazios) são todos obrigatórios. Também recusa: NaN/Infinity em valores e tolerâncias; instantes e datas infinitos nas observações; `collected_at` do manifesto, `collected_at` e `reference_at` das observações mais de 5 minutos no futuro e `reference_date` posterior à data UTC de agora+5 min (um `collected_at` futuro travaria as publicações seguintes, pois o snapshot publicado é imutável e o ativo nunca é podado); `period_end < period_start`; `tolerance_version` vazio; hora 24 e segundo 60 em `collected_at`; `collected_at` anterior ao do snapshot ativo. Trava `staging_*` em `share row exclusive` durante a publicação: o `INSERT` do coletor espera, e nada é copiado sem ter sido validado. |
+| `public.prune_snapshots(p_keep_days integer) returns integer` | T09, D11. `security definer`, `search_path = ''`. Apaga snapshots publicados há mais de N dias (N entre 1 e 36500), nunca o ativo; liga `app.retention_job` só na própria transação e o desliga ao fim; apaga staging abandonado com mais de N dias. `execute` só do dono (administrador do banco); nem `collector_ingest` executa. Retorna quantos snapshots apagou. |
+| `public.reject_unpublished_active_snapshot()` | Função de trigger de `active_snapshot`. `execute` revogado de `public`, `anon` e `authenticated`. |
 | `public.touch_updated_at()` | Atualiza `updated_at` em `conversations`, `request_runs` e `llm_usage`. |
+
+## Papel `collector_ingest` (T09, D13)
+
+Criado `nologin`, sem senha e sem herança: nenhuma senha no repositório. Para o coletor se conectar, o autor define a senha fora do código, uma vez por ambiente: `alter role collector_ingest login password '<senha forte>';` (como administrador do banco) e guarda a URL de conexão em `COLLECTOR_DATABASE_URL` (segredo). Privilégios: `select` em `assets` e `data_sources`; `insert` em `collection_runs` (política: só `status = 'running'` e `finished_at` nulo), `staging_observations` e `staging_validations`; `execute` em `publish_snapshot`; `statement_timeout` de 120 s. Nada em `snapshots`, `observations`, `field_validations`, `active_snapshot` nem em tabelas privadas (`messages`, `conversations`, `portfolio_items`, `allowed_users`, `llm_usage`, `request_runs`). Sem `delete`/`update` em snapshot, ligar `app.retention_job` não lhe dá efeito algum.
 
 ## Políticas (resumo)
 
@@ -124,7 +150,7 @@ Toda política de tabela privada exige `user_id = auth.uid()` e `is_allowed_user
 | `messages` | select, do dono |
 | `request_runs` | select, do dono |
 | `portfolio_items` | select, insert, delete, do dono |
-| `llm_usage` e tabelas de mercado | nenhuma |
+| `llm_usage`, tabelas de mercado e staging | nenhuma |
 
 `anon` não tem nenhum privilégio em nenhuma tabela.
 
