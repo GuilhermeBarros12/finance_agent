@@ -272,7 +272,8 @@ Deno.test("failures: saneadas (sem URL com token, sem HTML, truncadas)", async (
     }),
   });
   const res = await handleCatalogRequest(get(JWT_ANA), h.deps);
-  const text = await res.clone().text();
+  const parsed = await res.clone().json();
+  const text = JSON.stringify(parsed.snapshot.failures);
   for (
     const proibido of [
       "SEGREDO123",

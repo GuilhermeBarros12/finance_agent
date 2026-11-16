@@ -406,6 +406,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/agent/index.ts"
 
+[functions.catalog]
+enabled = true
+# verify_jwt = false: o JWT é verificado no código (auth.getUser) e a autorização
+# (allowed_users) vem logo depois, para o 401/403 sair no formato estruturado (como no agent).
+verify_jwt = false
+entrypoint = "./functions/catalog/index.ts"
+
 [analytics]
 enabled = true
 port = 54327
