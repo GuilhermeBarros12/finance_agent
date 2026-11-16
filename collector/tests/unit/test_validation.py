@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -505,9 +505,9 @@ def test_falha_de_coleta_nao_vira_zero_nem_tabela_vazia():
 
 
 def test_dias_uteis_pulam_fim_de_semana():
-    assert business_days_between(date(2026, 9, 18), date(2026, 9, 21)) == 1
-    assert business_days_between(date(2026, 9, 18), date(2026, 9, 25)) == 5
-    assert business_days_between(date(2026, 9, 19), date(2026, 9, 20)) == 0
+    assert business_days_between(datetime(2026, 9, 18).date(), datetime(2026, 9, 21).date()) == 1
+    assert business_days_between(datetime(2026, 9, 18).date(), datetime(2026, 9, 25).date()) == 5
+    assert business_days_between(datetime(2026, 9, 19).date(), datetime(2026, 9, 20).date()) == 0
 
 
 @pytest.mark.parametrize(
@@ -651,7 +651,7 @@ def test_snapshot_rejeita_observacao_de_ativo_fora_do_universo():
 
 
 def test_datetime_sem_fuso_e_rejeitado():
-    naive = datetime.fromisoformat("2026-09-18T21:00:00")
+    naive = datetime(2026, 9, 18, 21, 0)
     with pytest.raises(ValueError, match="fuso"):
         compute_freshness(naive, NOW)
     with pytest.raises(ValueError, match="fuso"):

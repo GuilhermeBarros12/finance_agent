@@ -181,6 +181,13 @@ def test_ativo_fora_do_universo_e_descartado_como_falha():
         "source_id": "fundamentus",
         "reason": "ativo fora do universo",
     } in (store.manifest["failures"])
+    # uma única falha por par (ativo, fonte), mesmo com várias observações descartadas
+    pares = [
+        f
+        for f in store.manifest["failures"]
+        if f["asset_id"] == "ZZZZ9" and f["source_id"] == "fundamentus"
+    ]
+    assert len(pares) == 1
 
 
 def test_sem_observacao_publicavel_nao_chama_o_banco():
