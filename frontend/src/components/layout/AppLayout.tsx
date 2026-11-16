@@ -42,7 +42,7 @@ export function AppLayout() {
           <Outlet />
         </main>
         <footer className="border-t border-borda px-4 py-3 text-nota text-tinta-suave">
-          <Link to="/aviso-legal" className="underline">
+          <Link to="/aviso-legal" className="inline-flex min-h-11 items-center underline">
             Aviso legal
           </Link>
         </footer>
