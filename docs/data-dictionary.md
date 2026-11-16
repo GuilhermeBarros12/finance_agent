@@ -116,7 +116,12 @@ Espelha `field_validations` com `asset_symbol` e `run_id` (sem FK); `selected_ob
 `id` uuid pk; `conversation_id` e `user_id` (fk composta para `conversations (id, user_id)`, cascade); `role` (`user` ou `assistant`); `sequence_no` (>= 1); `content` (até 20000 caracteres); `content_version` integer (padrão 1); `payload` jsonb (resposta estruturada, D21); `created_at`. `unique (conversation_id, sequence_no)`. Índice `(conversation_id, sequence_no)`. Dono autorizado só lê; o cliente não escreve.
 
 ### `request_runs`
-`id` uuid pk; `user_id` fk; `request_id` uuid; `conversation_id` (fk composta com `user_id`, nulo); `status` (`processing`, `succeeded`, `failed`); `error`; `created_at`; `updated_at`. `unique (user_id, request_id)` garante idempotência. Dono autorizado só lê.
+`id` uuid pk; `user_id` fk; `request_id` uuid; `conversation_id` (fk composta com `user_id`, nulo); `status` (`processing`, `succeeded`, `failed`); `error` (código do erro quando `failed`); `created_at`; `updated_at` (trigger `touch_updated_at`; a reserva expira 3 minutos depois dele); `body_hash`; `response`. `unique (user_id, request_id)` garante idempotência. Dono autorizado só lê; quem escreve é o backend (`service_role`).
+
+Acrescentado pela T18 (migration `20261116000002_request_runs_idempotency.sql`, só aditiva; nenhum grant nem política mudou):
+- `body_hash` text, nulo: SHA-256 hex minúsculo do corpo canônico do pedido (check `request_runs_body_hash_check`). Mesmo `request_id` com hash diferente é conflito (409). Nulo só em linha anterior à T18; o backend trata nulo como conflito.
+- `response` jsonb, nulo: resposta HTTP já entregue, devolvida na repetição do pedido. Só existe com `status = 'succeeded'` (check `request_runs_response_check`).
+- Índice `request_runs_status_updated_idx (status, updated_at)` para a retomada de reservas expiradas.
 
 ### `llm_usage`
 Contador global (não por usuário). pk `(usage_date, provider)`; `request_count` (>= 0); `updated_at`. Sem acesso do cliente.
@@ -154,6 +159,47 @@ Toda política de tabela privada exige `user_id = auth.uid()` e `is_allowed_user
 | `llm_usage`, tabelas de mercado e staging | nenhuma |
 
 `anon` não tem nenhum privilégio em nenhuma tabela.
+
+## Quem lê e escreve o quê na função `agent` (T18)
+
+Conferido contra o catálogo do banco local (`information_schema.role_table_grants`). A função não cria grants novos.
+
+| Cliente | Tabela | Operação | Por quê |
+| --- | --- | --- | --- |
+| JWT do usuário (RLS) | `allowed_users` | select da própria linha | autorização (403 se ausente ou `enabled = false`) |
+| JWT do usuário (RLS) | `conversations` | select por `id` e `user_id` | dono da conversa (404 caso contrário) |
+| `service_role` | `assets`, `active_snapshot`, `snapshots`, `field_validations`, `observations`, `data_sources` (por embed) | select | o navegador não tem acesso a dados de mercado |
+| `service_role` | `request_runs` | insert, select, update | reserva, retomada, conclusão e falha (o dono só lê) |
+| `service_role` | `messages` | select, insert | o dono só lê; a mensagem do usuário e a do assistente são gravadas pelo backend |
+
+O cliente administrativo só é usado depois de autenticar o JWT, conferir `allowed_users` e validar o corpo; o `user_id` gravado vem do JWT. Numéricos de mercado são lidos com `::text` (PostgREST devolveria número JSON, ou seja, float).
+
+### Formato de `messages.payload` (versão 1, D21)
+
+`messages.content_version = 1` e `payload` só na mensagem do assistente (a do usuário tem `payload` nulo):
+
+```json
+{
+  "content_version": 1,
+  "mode": "deterministic",
+  "snapshot_id": "uuid do snapshot lido",
+  "snapshot_collected_at": "2026-09-18T20:05:00+00:00",
+  "manifest": { "assets_total": 2, "assets_updated": 2 },
+  "sections": [
+    { "kind": "metric_table", "metric": "dividend_yield", "validation_ids": ["uuid"] },
+    { "kind": "limitation", "validation_ids": ["uuid"] }
+  ],
+  "evidence": {
+    "validations": [ { "validation_id": "uuid", "asset_id": "DEMO3", "metric": "dividend_yield", "status": "divergent", "freshness": "fresh", "selected_observation_id": null, "observation_ids": ["uuid", "uuid"], "comparison": { "delta_abs": "0.60", "limit": "0.20", "atol": "0.20", "rtol": "0", "tolerance_version": "seed-1" }, "reason": null } ],
+    "observations": [ { "observation_id": "uuid", "asset_id": "DEMO3", "metric": "dividend_yield", "value_decimal": "8.50", "source_id": "fundamentus", "...": "demais campos do contrato Observation (T06)" } ]
+  },
+  "warnings": [ { "code": "STALE_DATA", "message": "...", "asset_id": "DEMO3", "metric": "roe" } ]
+}
+```
+
+- `evidence` é uma cópia: não aponta para o snapshot, então a retenção (D11) não quebra a mensagem. `asset_id` na evidência é o símbolo (`DEMO3`), `source_id` é o `data_sources.code`; `validation_id` é `field_validations.id` e `observation_id` é `observations.id`.
+- `metric_table` agrupa as validações `verified`, `single_source` e `divergent` de um indicador. `limitation` agrupa `missing`, `incomparable`, `invalid` e `not_applicable` (sem valor apresentável). Campo pedido sem linha em `field_validations` não vira seção: gera o aviso `FIELD_NOT_IN_SNAPSHOT`.
+- `divergent` tem `selected_observation_id` nulo e as duas observações em `evidence.observations`.
 
 ## Dados de exemplo
 

@@ -397,6 +397,15 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# T18. verify_jwt = false de propósito: a função confere o JWT no código, com
+# `auth.getUser`, e responde 401 em formato estruturado (README 15.6). Com a verificação
+# da plataforma ligada, a resposta de erro seria outra e a checagem de assinatura ficaria
+# presa ao formato antigo de chave. A autorização (allowed_users) vem logo depois.
+[functions.agent]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/agent/index.ts"
+
 [analytics]
 enabled = true
 port = 54327
