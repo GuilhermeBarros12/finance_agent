@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "symbol": "TEST4",
+      "shortName": "TESTE SA",
+      "currency": "BRL",
+      "regularMarketPrice": 12.34,
+      "regularMarketTime": "2026-11-13T20:07:00.000Z"
+    }
+  ],
+  "requestedAt": "2026-11-16T12:00:00.000Z"
+}

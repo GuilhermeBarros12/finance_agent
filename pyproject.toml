@@ -13,6 +13,7 @@ dependencies = [
   "beautifulsoup4",
   "pydantic",
   "pyyaml",
+  "psycopg[binary]",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +24,10 @@ where = ["collector/src"]
 
 [tool.pytest.ini_options]
 testpaths = ["collector/tests"]
-pythonpath = ["collector/src"]
+markers = [
+  "integration: exige o Supabase local (COLLECTOR_TEST_DATABASE_URL); pulado sem ele",
+]
+pythonpath = ["collector/src", "collector/tests"]
 
 [tool.ruff]
 line-length = 100
