@@ -14,9 +14,9 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
 from pydantic import SecretStr
 
@@ -33,13 +33,24 @@ SYMBOL_FIELD = "symbol"
 PRICE_FIELD = "regularMarketPrice"
 TIME_FIELD = "regularMarketTime"
 CURRENCY_FIELD = "currency"
+AUTH_HEADER = "Authorization"
+AUTH_SCHEME = "Bearer"
+INSTANT_FORMAT = "ISO 8601 com fuso"
 # ---------------------------------------------------------------------------------------
 
 SOURCE_ID = "brapi"
 BRAPI_METHODOLOGY_ID = "brapi_quote"
 PARSER_VERSION = "brapi-quote-0.1"
 _TICKER = re.compile(r"[A-Z]{4}[0-9]{1,2}")
+_TOKEN_CHARS = re.compile(r"[\x21-\x7e]+")
+_SAFE_ID = re.compile(r"[\x21-\x7e]{1,32}")
 _MAX_PRICE = Decimal(10) ** 9
+# Piso de preço: no máximo 8 casas decimais (menor preço aceito: 0,00000001). Preço positivo
+# com escala maior é recusado antes de qualquer formatação (evita texto gigante e memória).
+_MAX_DECIMAL_PLACES = 8
+_MAX_BODY_BYTES = 1024 * 1024  # 1 MiB
+# A RPC de publicação (T09) recusa reference_at além de now() + 5 min; o adaptador recusa antes.
+_MAX_FUTURE_SKEW = timedelta(minutes=5)
 
 
 class BrapiParseError(ValueError):
@@ -56,12 +67,36 @@ def _reject_constant(name: str) -> Any:
     raise BrapiParseError(f"constante JSON não permitida: {name}")
 
 
+class _Literal(Decimal):
+    """`Decimal` que guarda o texto numérico exatamente como veio no JSON."""
+
+    literal: str
+
+    def __new__(cls, text: str) -> Self:
+        obj = super().__new__(cls, text)
+        obj.literal = text
+        return obj
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            raise BrapiParseError("chave JSON duplicada")
+        out[key] = value
+    return out
+
+
 def _load_json(content: bytes) -> Any:
     """Lê o JSON sem `float`: todo número vira `Decimal` direto do texto."""
     try:
         text = content.decode("utf-8")
         return json.loads(
-            text, parse_float=Decimal, parse_int=Decimal, parse_constant=_reject_constant
+            text,
+            parse_float=_Literal,
+            parse_int=_Literal,
+            parse_constant=_reject_constant,
+            object_pairs_hook=_no_duplicates,
         )
     except BrapiParseError:
         raise
@@ -69,12 +104,22 @@ def _load_json(content: bytes) -> Any:
         raise BrapiParseError("resposta não é JSON válido") from None
 
 
-def _parse_price(value: Any) -> Decimal:
-    if isinstance(value, bool) or not isinstance(value, Decimal):
+def _parse_price(value: Any) -> tuple[Decimal, str]:
+    """Devolve (preço, literal recebido). Limita a escala antes de formatar."""
+    if isinstance(value, bool) or not isinstance(value, _Literal):
         raise BrapiParseError(f"{PRICE_FIELD} ausente ou não numérico")
     if not value.is_finite() or value <= 0 or value >= _MAX_PRICE:
         raise BrapiParseError(f"{PRICE_FIELD} inválido (deve ser positivo e finito)")
-    return value
+    _, digits, exponent = value.as_tuple()
+    if isinstance(exponent, int):  # casas efetivas, sem contar zeros à direita (sem normalize)
+        trailing = len(digits) - len("".join(map(str, digits)).rstrip("0"))
+        exponent += trailing
+    if not isinstance(exponent, int) or exponent < -_MAX_DECIMAL_PLACES:
+        raise BrapiParseError(f"{PRICE_FIELD} com mais de {_MAX_DECIMAL_PLACES} casas decimais")
+    literal = value.literal
+    if len(literal) > 64:
+        raise BrapiParseError(f"{PRICE_FIELD} com texto longo demais")
+    return Decimal(literal), literal
 
 
 def _parse_reference(value: Any) -> datetime:
@@ -83,10 +128,13 @@ def _parse_reference(value: Any) -> datetime:
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError:
-        raise BrapiParseError(f"{TIME_FIELD} inválido") from None
+        raise BrapiParseError(f"{TIME_FIELD} inválido ({INSTANT_FORMAT})") from None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise BrapiParseError(f"{TIME_FIELD} sem fuso horário")
-    return parsed.astimezone(UTC)
+    try:
+        return parsed.astimezone(UTC)
+    except OverflowError:
+        raise BrapiParseError(f"{TIME_FIELD} fora do intervalo") from None
 
 
 class BrapiAdapter(SourceAdapter):
@@ -105,12 +153,20 @@ class BrapiAdapter(SourceAdapter):
             raise ValueError("configuração de fonte não é da brapi")
         if not token.get_secret_value():
             raise ValueError("token da brapi vazio")
+        if not _TOKEN_CHARS.fullmatch(token.get_secret_value()):
+            raise ValueError("token da brapi com caracteres inválidos")
         self._http = http
         self._source = source
         self._token = token  # SecretStr: fora de repr/str
         self._run_id = run_id
         self._methodology_id = methodology_id
         self.failures: list[SourceFailure] = []
+
+    @staticmethod
+    def _failure(asset: object, reason: str) -> SourceFailure:
+        """Monta a falha sem nunca lançar, mesmo com ativo não representável."""
+        asset_id = asset if isinstance(asset, str) and _SAFE_ID.fullmatch(asset) else "?"
+        return SourceFailure(asset_id=asset_id, source_id=SOURCE_ID, reason=reason[:200] or "falha")
 
     def _source_url(self, asset: str) -> str:
         return f"{self._source.base_url.rstrip('/')}{QUOTE_PATH}?{SYMBOLS_PARAM}={asset}"
@@ -122,25 +178,26 @@ class BrapiAdapter(SourceAdapter):
         """
         self.failures = []
         records: list[RawRecord] = []
+        seen: set[str] = set()
         for asset in assets:
-            if not _TICKER.fullmatch(asset):
-                self.failures.append(
-                    SourceFailure(
-                        asset_id=asset or "?", source_id=SOURCE_ID, reason="ticker inválido"
-                    )
-                )
+            if not isinstance(asset, str) or not _TICKER.fullmatch(asset):
+                self.failures.append(self._failure(asset, "ticker inválido"))
                 continue
+            if asset in seen:  # ativo repetido: uma só coleta (um só observation_id)
+                continue
+            seen.add(asset)
             try:
                 response = self._http.get(
                     SOURCE_ID,
                     f"{self._source.base_url.rstrip('/')}{QUOTE_PATH}",
                     params={SYMBOLS_PARAM: asset},
-                    headers={"Authorization": f"Bearer {self._token.get_secret_value()}"},
+                    headers={AUTH_HEADER: f"{AUTH_SCHEME} {self._token.get_secret_value()}"},
                 )
             except FetchError as exc:
-                self.failures.append(
-                    SourceFailure(asset_id=asset, source_id=SOURCE_ID, reason=str(exc)[:200])
-                )
+                self.failures.append(self._failure(asset, str(exc)))
+                continue
+            if len(response.content) > _MAX_BODY_BYTES:
+                self.failures.append(self._failure(asset, "resposta grande demais"))
                 continue
             records.append(
                 RawRecord(
@@ -169,15 +226,17 @@ class BrapiAdapter(SourceAdapter):
         currency = item.get(CURRENCY_FIELD)
         if currency is not None and currency != "BRL":
             raise BrapiParseError(f"{CURRENCY_FIELD} diferente de BRL")
-        price = _parse_price(item.get(PRICE_FIELD))
+        price, literal = _parse_price(item.get(PRICE_FIELD))
         reference_at = _parse_reference(item.get(TIME_FIELD))
+        if reference_at > raw.fetched_at + _MAX_FUTURE_SKEW:
+            raise BrapiParseError(f"{TIME_FIELD} no futuro")
         return [
             Observation(
                 observation_id=f"{self._run_id}:{SOURCE_ID}:{raw.asset_id}:{Metric.QUOTE_PRICE.value}",
                 asset_id=raw.asset_id,
                 asset_class=AssetClass.STOCK,
                 metric=Metric.QUOTE_PRICE,
-                raw_value=format(price, "f"),
+                raw_value=literal,
                 value_decimal=price,
                 unit=Unit.BRL,
                 currency="BRL",
@@ -204,10 +263,6 @@ class BrapiAdapter(SourceAdapter):
         for raw in records:
             try:
                 result.observations.extend(self.parse(raw))
-            except (BrapiParseError, ValueError) as exc:
-                result.failures.append(
-                    SourceFailure(
-                        asset_id=raw.asset_id or "?", source_id=SOURCE_ID, reason=str(exc)[:200]
-                    )
-                )
+            except (BrapiParseError, ValueError, OverflowError) as exc:
+                result.failures.append(self._failure(raw.asset_id, str(exc)))
         return result

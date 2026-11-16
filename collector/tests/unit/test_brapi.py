@@ -175,3 +175,103 @@ def test_parse_error_messages_without_token() -> None:
 def test_empty_token_rejected() -> None:
     with pytest.raises(ValueError):
         _adapter(lambda r: httpx.Response(200), token="")
+
+
+# --- T11 (correções da revisão) ---------------------------------------------------------
+
+
+def _raw_body(price: str, time: str = '"2026-11-13T20:07:00Z"') -> bytes:
+    return (
+        '{"results":[{"symbol":"DEMO3","currency":"BRL",'
+        f'"regularMarketPrice":{price},"regularMarketTime":{time}}}]}}'
+    ).encode()
+
+
+@pytest.mark.parametrize("stamp", ['"0001-01-01T00:00:00+14:00"', '"9999-12-31T23:59:59-14:00"'])
+def test_instant_overflow_is_parse_error(stamp: str) -> None:
+    with pytest.raises(BrapiParseError):
+        _parse(_raw_body("10.5", stamp))
+
+
+def test_instant_overflow_fails_only_that_asset() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        sym = request.url.params["symbols"]
+        stamp = '"0001-01-01T00:00:00+14:00"' if sym == "DEMO3" else '"2026-11-13T20:07:00Z"'
+        body = _raw_body("10.5", stamp).replace(b"DEMO3", sym.encode())
+        return httpx.Response(200, content=body)
+
+    result = _adapter(handler).collect(["DEMO3", "TEST4"])
+    assert [o.asset_id for o in result.observations] == ["TEST4"]
+    assert [f.asset_id for f in result.failures] == ["DEMO3"]
+
+
+@pytest.mark.parametrize("price", ["1e-30", "1e-99999999", "0.000000001", "1e999999999", "1e9"])
+def test_price_scale_and_range_refused(price: str) -> None:
+    with pytest.raises(BrapiParseError):
+        _parse(_raw_body(price))
+
+
+def test_price_at_scale_limit_accepted() -> None:
+    obs = _parse(_raw_body("0.00000001"))[0]
+    assert obs.value_decimal == Decimal("0.00000001")
+    assert obs.raw_value == "0.00000001"
+
+
+def test_raw_value_keeps_received_literal() -> None:
+    obs = _parse(_raw_body("38.50"))[0]
+    assert obs.raw_value == "38.50"
+    obs = _parse(_raw_body("1.5e1"))[0]
+    assert obs.raw_value == "1.5e1"
+    assert obs.value_decimal == Decimal(15)
+
+
+def test_future_reference_vs_fetched_at() -> None:
+    # fetched_at = 2026-11-16T12:00Z
+    with pytest.raises(BrapiParseError):
+        _parse(_raw_body("10", '"2027-01-01T00:00:00Z"'))
+    assert _parse(_raw_body("10", '"2026-11-16T12:04:00Z"'))
+    with pytest.raises(BrapiParseError):
+        _parse(_raw_body("10", '"2026-11-16T12:06:00Z"'))
+
+
+def test_surrogate_ticker_does_not_break_batch() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_raw_body("10.5"))
+
+    result = _adapter(handler).collect(["\ud800", "DEMO3"])
+    assert [o.asset_id for o in result.observations] == ["DEMO3"]
+    assert [f.asset_id for f in result.failures] == ["?"]
+
+
+def test_duplicate_json_keys_refused() -> None:
+    body = b'{"results":[{"symbol":"DEMO3","regularMarketPrice":1,"regularMarketPrice":2,' + (
+        b'"regularMarketTime":"2026-11-13T20:07:00Z"}]}'
+    )
+    with pytest.raises(BrapiParseError):
+        _parse(body)
+
+
+def test_duplicate_asset_collected_once() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.params["symbols"])
+        return httpx.Response(200, content=_raw_body("10.5"))
+
+    result = _adapter(handler).collect(["DEMO3", "DEMO3"])
+    assert calls == ["DEMO3"]
+    assert len(result.observations) == 1
+
+
+@pytest.mark.parametrize("token", ["a\r\nb", "tókén", "a b", "a\n"])
+def test_bad_token_rejected(token: str) -> None:
+    with pytest.raises(ValueError):
+        _adapter(lambda r: httpx.Response(200), token)
+
+
+def test_oversized_body_fails_asset() -> None:
+    big = b" " * (1024 * 1024 + 1)
+    result_adapter = _adapter(lambda r: httpx.Response(200, content=big))
+    with pytest.raises(FetchError):
+        result_adapter.fetch(["DEMO3"])
+    assert [f.asset_id for f in result_adapter.failures] == ["DEMO3"]
