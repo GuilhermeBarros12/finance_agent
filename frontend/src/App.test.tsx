@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -12,18 +13,27 @@ vi.mock('@/lib/supabase', () => ({
       getSession: () => getSession(),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
+    // Autorização lida do banco: o usuário da sessão está em allowed_users.
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: { user_id: 'u1', enabled: true }, error: null }) }),
+      }),
+    }),
   },
 }))
 
 function renderAt(path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <ThemeProvider>
-      <SessionProvider>
-        <MemoryRouter initialEntries={[path]}>
-          <AppRoutes />
-        </MemoryRouter>
-      </SessionProvider>
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <SessionProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <AppRoutes />
+          </MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
 }
 

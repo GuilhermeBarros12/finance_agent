@@ -39,7 +39,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T19 | Classificador de intenção com LLM | T18 | concluída | [#22](https://github.com/GuilhermeBarros12/finance_agent/pull/22) |
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
 | T21a | Fundação do front e guia de design | T05 | concluída | [#12](https://github.com/GuilhermeBarros12/finance_agent/pull/12) |
-| T21b | Login e conversas | T21a, T08 | pendente | |
+| T21b | Login e conversas | T21a, T08 | em revisão | |
 | T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | pendente | |
 | T21d | Carteira | T21c | pendente | |
 | T21e | Estado dos dados, exportação e aviso legal | T21c | pendente | |
