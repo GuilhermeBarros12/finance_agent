@@ -27,6 +27,7 @@ Quando resolver um item, marque a caixa e, se ele liberar uma tarefa, mude o est
 - [ ] **P-10 — Benchmark do PDF.** O branch `claude/happy-edison-uqdci8` tem o protótipo, sem pull request. Decidir se roda o benchmark agora ou junto da fatia de PDF.
 - [x] **P-11 — Destravar a T06.** Liberada em 2026-11-14 para uma terceira rodada de correção (ver a nota em `docs/bloqueios.md`). Três correções pequenas (offset de fuso, substituto UTF-16, contagens em `docs/tarefas/T06.md`) em `tarefa/T06`; ver `docs/bloqueios.md`. **Libera:** T08, T10 e a cadeia seguinte.
 - [x] **P-12 — Decidir o guarda do bundle.** Resolvida em 2026-11-14: o autor aprovou trocar `sb_secret_` por `sb_secret_[A-Za-z0-9_-]{20,}` em `scripts/ci/check_bundle.sh`, e a troca foi feita em `fatia-acoes`. **Libera:** o PR da T21a (branch `tarefa/T21a`).
+- [ ] **P-16 — Confirmar o contrato da brapi.** A execução autônoma não conseguiu ler a documentação oficial (`https://brapi.dev/docs/acoes/cotacao`): o host não resolve na sessão. O adaptador da T11 assume `results`, `symbol`, `regularMarketPrice`, `regularMarketTime`, `currency`, instante em ISO 8601 com fuso e token em `Authorization: Bearer`. Conferir o caminho, os nomes dos campos e o formato do instante e, se divergirem, trocar as constantes no topo de `collector/src/collector/sources/brapi.py` e a fixture em `collector/tests/fixtures/brapi/`. **Libera:** a coleta real (T16).
 
 ## Para o futuro
 
