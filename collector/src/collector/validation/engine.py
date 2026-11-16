@@ -36,6 +36,10 @@ from collector.validation.comparability import BRT, check_comparability
 from collector.validation.tolerance import Tolerances, compute_tolerance
 
 UNCALIBRATED = "uncalibrated"
+FUTURE_COLLECTED_AT = "collected_at_in_future"
+# Folga para relógios levemente desencontrados; além disso a data de coleta é suspeita.
+CLOCK_SKEW = timedelta(minutes=5)
+MISSING_FUNDAMENTUS = "selecao_exige_fundamentus"
 STALE_AFTER_BUSINESS_DAYS = 1
 EXPIRED_AFTER_BUSINESS_DAYS = 5
 
@@ -70,7 +74,14 @@ def business_days_between(start: date, end: date) -> int:
     return days
 
 
+def _require_aware(value: datetime, name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} deve ter fuso horário")
+
+
 def compute_freshness(collected_at: datetime, now: datetime) -> Freshness:
+    _require_aware(collected_at, "collected_at")
+    _require_aware(now, "now")
     elapsed = business_days_between(collected_at.astimezone(BRT).date(), now.astimezone(BRT).date())
     if elapsed > EXPIRED_AFTER_BUSINESS_DAYS:
         return Freshness.EXPIRED
@@ -115,6 +126,10 @@ def validate_field(
             raise ValueError("observação de outro ativo ou métrica passada ao campo")
     invalid = [r for r in invalid if r.asset_id == asset_id and r.metric == metric]
     freshness = compute_freshness(snapshot_collected_at, now)
+    future = snapshot_collected_at > now + CLOCK_SKEW
+    if future:
+        # Data de coleta no futuro: não inventar data nem declarar "fresh".
+        freshness = Freshness.UNKNOWN_REFERENCE_DATE
 
     def build(
         status: ValidationStatus,
@@ -126,6 +141,9 @@ def validate_field(
         reason: str | None = None,
         unpublished: Iterable[str] = (),
     ) -> FieldResult:
+        if future and fresh is not None:
+            note = f"{FUTURE_COLLECTED_AT}: collected_at do snapshot é posterior a now"
+            reason = f"{reason}; {note}" if reason else note
         validation = FieldValidation(
             asset_id=asset_id,
             metric=metric,
@@ -140,7 +158,11 @@ def validate_field(
         return FieldResult(validation, tuple(unpublished))
 
     if not_applicable_reason is not None:
-        return build(ValidationStatus.NOT_APPLICABLE, reason=not_applicable_reason)
+        return build(
+            ValidationStatus.NOT_APPLICABLE,
+            reason=not_applicable_reason,
+            unpublished=[o.observation_id for o in observations],
+        )
 
     sources = [o.source_id for o in observations]
     if len(sources) != len(set(sources)) or len(set(sources)) > 2:
@@ -173,6 +195,14 @@ def validate_field(
     ids = [first.observation_id, second.observation_id]
     if not verdict.comparable:
         return build(ValidationStatus.INCOMPARABLE, ids, fresh=freshness, reason=verdict.reason)
+
+    if first.source_id != "fundamentus":
+        # D19: o valor exibido é o do Fundamentus; sem ele não se escolhe outra fonte.
+        return build(
+            ValidationStatus.INVALID,
+            reason=f"{MISSING_FUNDAMENTUS}: sem observação do Fundamentus entre as duas fontes",
+            unpublished=ids,
+        )
 
     tol = tolerances.metrics[metric]
     result = compute_tolerance(
@@ -224,6 +254,12 @@ def validate_snapshot(
     missing_reasons: Mapping[tuple[str, Metric], str] | None = None,
 ) -> list[FieldResult]:
     """Uma `FieldResult` por (ativo, métrica) do universo, cada uma decidida isoladamente."""
+    assets = list(assets)
+    observations = list(observations)
+    outside = sorted({o.asset_id for o in observations} - set(assets))
+    if outside:
+        # Nunca descartar observação em silêncio: quem chama decide o que fazer.
+        raise ValueError(f"observações de ativos fora do universo informado: {outside}")
     grouped: dict[tuple[str, Metric], list[Observation]] = {}
     for obs in observations:
         grouped.setdefault((obs.asset_id, obs.metric), []).append(obs)

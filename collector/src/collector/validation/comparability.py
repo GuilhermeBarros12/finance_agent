@@ -86,12 +86,14 @@ def check_comparability(
     if (a.period_start, a.period_end) != (b.period_start, b.period_end):
         return _no(PERIOD_MISMATCH)
 
+    # A data de coleta nunca substitui a data do dado (README 6.4). Conservador: a
+    # metodologia de cada fonte precisa declarar `reference_date_available: true`; `false`
+    # (a fonte não informa data) ou nulo (não sabido) impedem o veredito comparável, mesmo
+    # que a observação traga alguma data.
+    if any(source.reference_date_available is not True for source in declared):
+        return _no(REFERENCE_DATE_UNKNOWN)
     day_a, day_b = _reference_day(a), _reference_day(b)
-    if day_a is None and day_b is None:
-        # Sem data-base nas duas: vale o dia (horário de Brasília) em que foram coletadas.
-        day_a = a.collected_at.astimezone(BRT).date()
-        day_b = b.collected_at.astimezone(BRT).date()
-    elif day_a is None or day_b is None:
+    if day_a is None or day_b is None:
         return _no(REFERENCE_DATE_UNKNOWN)
     if day_a != day_b:
         return _no(DATE_MISMATCH)

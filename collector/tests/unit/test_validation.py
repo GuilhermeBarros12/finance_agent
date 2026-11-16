@@ -542,3 +542,172 @@ def test_freshness_vai_para_a_validacao():
     )
     assert res.validation.freshness is Freshness.EXPIRED
     assert res.validation.status is ValidationStatus.SINGLE_SOURCE
+
+
+# --- Revisão da T14: data-base, metadados, isolamento e bordas -----------------------------
+
+
+def _sem_data_base(*, calibration=False):
+    obs = [
+        _obs("fundamentus", "1.00", reference_at=None),
+        _obs("statusinvest", "1.00", reference_at=None),
+    ]
+    return _run(obs, calibration=calibration)
+
+
+@pytest.mark.parametrize("calibration", [False, True])
+def test_duas_sem_data_base_sao_incomparable_nao_usam_collected_at(calibration):
+    """Mesmo com collected_at igual nas duas, a data de coleta não vira data-base (README 6.4)."""
+    v = _sem_data_base(calibration=calibration).validation
+    assert v.status is ValidationStatus.INCOMPARABLE
+    assert v.reason == "reference_date_unknown"
+    assert v.comparison is None and v.selected_observation_id is None
+
+
+def test_check_comparability_duas_sem_data_base():
+    a = _obs("fundamentus", "1.00", reference_at=None)
+    b = _obs("statusinvest", "1.00", reference_at=None)
+    assert a.collected_at == b.collected_at
+    res = check_comparability(a, b, _methodologies().metrics["price_to_book"])
+    assert not res.comparable and res.reason == "reference_date_unknown"
+
+
+@pytest.mark.parametrize("declared", [False, None])
+def test_metodologia_sem_data_declarada_nao_chega_a_verified(declared):
+    dump = _methodologies().model_dump(mode="json")
+    dump["metrics"]["price_to_book"]["sources"]["statusinvest"]["reference_date_available"] = (
+        declared
+    )
+    res = _run(
+        [_obs("fundamentus", "1.00"), _obs("statusinvest", "1.00")],
+        methodologies=Methodologies.model_validate(dump),
+    )
+    assert res.validation.status is ValidationStatus.INCOMPARABLE
+    assert res.validation.reason == "reference_date_unknown"
+
+
+@pytest.mark.parametrize("calibration", [False, True])
+def test_veredito_insufficient_metadata_com_fontes_completas_e_incomparable(calibration):
+    res = _run(
+        [_obs("fundamentus", "1.00"), _obs("statusinvest", "1.00")],
+        calibration=calibration,
+        methodologies=_methodologies("insufficient_metadata"),
+    )
+    assert res.validation.status is ValidationStatus.INCOMPARABLE
+    assert res.validation.reason == "unknown_metadata"
+
+
+def test_yaml_sem_secao_validation_liga_a_calibragem(tmp_path):
+    raw = yaml.safe_load(DEFAULT_TOLERANCES_PATH.read_text(encoding="utf-8"))
+    raw.pop("validation", None)
+    path = tmp_path / "tolerances.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    assert load_tolerances(path).validation.calibration_mode is True
+    assert Tolerances.model_validate(raw).validation.calibration_mode is True
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1, "true", None])
+def test_calibration_mode_exige_booleano(value):
+    raw = yaml.safe_load(DEFAULT_TOLERANCES_PATH.read_text(encoding="utf-8"))
+    raw["validation"] = {"calibration_mode": value}
+    with pytest.raises(ValidationError):
+        Tolerances.model_validate(raw)
+
+
+def test_registros_invalidos_nao_vazam_entre_ativos_e_metricas():
+    outros = [
+        InvalidRecord("BBBB3", Metric.PRICE_TO_BOOK, "statusinvest", "falha de outro ativo"),
+        InvalidRecord("AAAA3", Metric.ROE, "statusinvest", "falha de outra métrica"),
+    ]
+    v = _run([_obs("fundamentus", "1.00")], invalid=outros).validation
+    assert v.status is ValidationStatus.SINGLE_SOURCE
+    assert v.reason is None
+    v = _run([], invalid=outros).validation
+    assert v.status is ValidationStatus.MISSING
+    proprio = InvalidRecord("AAAA3", Metric.PRICE_TO_BOOK, "statusinvest", "falha propria")
+    v = _run([_obs("fundamentus", "1.00")], invalid=[*outros, proprio]).validation
+    assert "falha propria" in v.reason and "outro ativo" not in v.reason
+    assert "outra métrica" not in v.reason
+
+
+def test_not_applicable_com_observacoes_devolve_ids_nao_publicaveis():
+    a = _obs("fundamentus", "1.00")
+    res = _run([a], not_applicable_reason="banco")
+    assert res.validation.status is ValidationStatus.NOT_APPLICABLE
+    assert res.validation.observation_ids == []
+    assert res.unpublished_observation_ids == (a.observation_id,)
+
+
+def test_snapshot_rejeita_observacao_de_ativo_fora_do_universo():
+    with pytest.raises(ValueError, match="CCCC3"):
+        validate_snapshot(
+            ["AAAA3"],
+            [_obs("fundamentus", "1.00", asset="CCCC3")],
+            methodologies=_methodologies(),
+            tolerances=_tol(False),
+            snapshot_collected_at=COLLECTED,
+            now=NOW,
+        )
+
+
+def test_datetime_sem_fuso_e_rejeitado():
+    naive = datetime(2026, 9, 18, 21, 0)
+    with pytest.raises(ValueError, match="fuso"):
+        compute_freshness(naive, NOW)
+    with pytest.raises(ValueError, match="fuso"):
+        compute_freshness(COLLECTED, naive)
+    with pytest.raises(ValueError, match="fuso"):
+        validate_field(
+            "AAAA3",
+            Metric.PRICE_TO_BOOK,
+            [],
+            methodologies=_methodologies(),
+            tolerances=_tol(False),
+            snapshot_collected_at=naive,
+            now=NOW,
+        )
+
+
+def test_selecao_sem_fundamentus_e_invalid_e_nao_escolhe_outra_fonte():
+    dump = _methodologies().model_dump(mode="json")
+    dump["metrics"]["price_to_book"]["sources"]["fonte_z"] = dict(
+        dump["metrics"]["price_to_book"]["sources"]["statusinvest"]
+    )
+    meth = Methodologies.model_validate(dump)
+    a = _obs("statusinvest", "1.00")
+    b = _obs("fonte_z", "1.00")
+    for calibration in (False, True):
+        res = _run([a, b], methodologies=meth, calibration=calibration)
+        assert res.validation.status is ValidationStatus.INVALID
+        assert res.validation.selected_observation_id is None
+        assert res.validation.observation_ids == []
+        assert set(res.unpublished_observation_ids) == {a.observation_id, b.observation_id}
+
+
+def test_collected_at_no_futuro_nao_sai_fresh():
+    futuro = datetime(2026, 9, 19, 21, 0, tzinfo=UTC)
+    res = validate_field(
+        "AAAA3",
+        Metric.PRICE_TO_BOOK,
+        [_obs("fundamentus", "1.00")],
+        methodologies=_methodologies(),
+        tolerances=_tol(False),
+        snapshot_collected_at=futuro,
+        now=NOW,
+    )
+    assert res.validation.freshness is Freshness.UNKNOWN_REFERENCE_DATE
+    assert "collected_at_in_future" in res.validation.reason
+
+
+def test_pequeno_desencontro_de_relogio_continua_fresh():
+    ligeiramente = datetime(2026, 9, 18, 21, 2, tzinfo=UTC)
+    res = validate_field(
+        "AAAA3",
+        Metric.PRICE_TO_BOOK,
+        [_obs("fundamentus", "1.00")],
+        methodologies=_methodologies(),
+        tolerances=_tol(False),
+        snapshot_collected_at=ligeiramente,
+        now=NOW,
+    )
+    assert res.validation.freshness is Freshness.FRESH

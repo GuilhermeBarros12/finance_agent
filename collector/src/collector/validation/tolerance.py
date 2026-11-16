@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, ValidationError, model_validator
 
 from collector.contracts import METRIC_UNIT, DecimalStr, Metric, Unit
 from collector.settings import DEFAULT_CONFIG_DIR, SettingsError
@@ -70,7 +70,7 @@ class ValidationOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Começa ligado (plano T14, passo 5): nenhum selo antes de a T17 terminar.
-    calibration_mode: bool = True
+    calibration_mode: StrictBool = True
 
 
 class Tolerances(BaseModel):
