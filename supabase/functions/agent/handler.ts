@@ -4,6 +4,7 @@
 // Não há LLM aqui: nenhuma chamada de rede além do banco. O `user_id` vem só do JWT.
 import { AppError, errorBody, errors } from "./errors.ts";
 import { corsHeaders } from "./cors.ts";
+import { bearer } from "../_shared/auth.ts";
 import {
   type AgentRequest,
   canonicalBody,
@@ -27,13 +28,6 @@ function json(
     status,
     headers: { ...JSON_HEADERS, ...extra },
   });
-}
-
-function bearer(req: Request): string | null {
-  const header = req.headers.get("authorization");
-  if (!header) return null;
-  const match = header.match(/^Bearer\s+([^\s]+)$/i);
-  return match ? match[1] : null;
 }
 
 async function readBody(req: Request): Promise<unknown> {

@@ -4,8 +4,14 @@
 //    (request_runs, messages do assistente). Só é usado DEPOIS de autenticar e
 //    autorizar, e o user_id sempre vem do JWT.
 // Numéricos saem como texto (`::text`): PostgREST devolveria número JSON (float).
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { errors } from "./errors.ts";
+import { createClient } from "@supabase/supabase-js";
+import {
+  authenticateWith,
+  type Client,
+  isAllowedUserWith,
+  NO_SESSION,
+  userClientFor,
+} from "../_shared/auth.ts";
 import type {
   AgentDeps,
   AssetRow,
@@ -19,37 +25,10 @@ import type {
   UserStore,
   ValidationRow,
 } from "./types.ts";
-import { parseOrigins } from "./cors.ts";
+import { type EnvConfig, readEnv } from "../_shared/env.ts";
 import { sha256Hex } from "./request.ts";
 
-// deno-lint-ignore no-explicit-any
-type Client = SupabaseClient<any, "public", any>;
-
-export interface EnvConfig {
-  url: string;
-  anonKey: string;
-  serviceKey: string;
-  origins: string[];
-}
-
-// Os nomes SUPABASE_* são injetados pelo runtime das Edge Functions (README 12.3).
-export function readEnv(get: (name: string) => string | undefined): EnvConfig {
-  const url = get("SUPABASE_URL");
-  const anonKey = get("SUPABASE_ANON_KEY") ?? get("SUPABASE_PUBLISHABLE_KEY");
-  const serviceKey = get("SUPABASE_SERVICE_ROLE_KEY") ??
-    get("SUPABASE_SECRET_KEY");
-  if (!url || !anonKey || !serviceKey) {
-    throw new Error("Configuração do Supabase ausente no ambiente da função.");
-  }
-  return {
-    url,
-    anonKey,
-    serviceKey,
-    origins: parseOrigins(get("APP_ORIGINS")),
-  };
-}
-
-const NO_SESSION = { auth: { persistSession: false, autoRefreshToken: false } };
+export { type EnvConfig, readEnv };
 
 export function createAgentDeps(env: EnvConfig): AgentDeps {
   const anon: Client = createClient(env.url, env.anonKey, NO_SESSION);
@@ -67,44 +46,16 @@ export function createAgentDeps(env: EnvConfig): AgentDeps {
 }
 
 function userClient(env: EnvConfig, jwt: string): Client {
-  return createClient(env.url, env.anonKey, {
-    ...NO_SESSION,
-    global: { headers: { Authorization: `Bearer ${jwt}` } },
-  });
+  return userClientFor(env.url, env.anonKey, jwt);
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// O Auth confere assinatura, expiração e revogação. Token inválido vira null (401);
-// falha do próprio serviço vira 503, nunca "autenticado" nem "não autenticado".
-export async function authenticateWith(
-  client: Client,
-  jwt: string,
-): Promise<{ userId: string } | null> {
-  const { data, error } = await client.auth.getUser(jwt);
-  if (error) {
-    const status = (error as { status?: number }).status;
-    if (status === undefined || status === 0 || status >= 500) {
-      throw errors.serviceUnavailable();
-    }
-    return null;
-  }
-  const id = data.user?.id;
-  if (!id || !UUID.test(id)) return null;
-  return { userId: id.toLowerCase() };
-}
+export { authenticateWith };
 
 export class SupabaseUserStore implements UserStore {
   constructor(private readonly db: Client) {}
 
   async isAllowedUser(userId: string): Promise<boolean> {
-    const { data, error } = await this.db
-      .from("allowed_users")
-      .select("enabled")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(`allowed_users: ${error.code ?? "erro"}`);
-    return data?.enabled === true;
+    return await isAllowedUserWith(this.db, userId);
   }
 
   async ownsConversation(
