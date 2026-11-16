@@ -77,7 +77,7 @@ Estado de validação de um campo de um ativo num snapshot (README 7.5). `unique
 | `freshness` | text | `fresh`, `stale`, `expired`, `unknown_reference_date`. |
 | `selected_observation_id` | uuid, nulo, fk `observations` | Nulo em `divergent`, `missing`, `invalid` e `not_applicable` (check). |
 | `observation_ids` | uuid[] | Observações usadas na comparação. |
-| `delta_abs`, `limit_value`, `atol`, `rtol` | numeric, nulos | Obrigatórios (e não negativos) em `verified` e `divergent`; nulos nos demais estados. |
+| `delta_abs`, `limit_value`, `atol`, `rtol` | numeric, nulos | Obrigatórios (e não negativos) em `verified` e `divergent`. Em `incomparable` são opcionais, mas tudo ou nada, junto com `tolerance_version`: o modo de calibragem grava aqui a comparação calculada com a tolerância ainda não calibrada (P-17, migration `20261116000003_calibration_comparison.sql`). Nulos nos demais estados. A mesma regra vale em `staging_validations`. |
 | `tolerance_version` | text, nulo | Obrigatório com os campos acima. |
 | `reason` | text, nulo | |
 | `created_at` | timestamptz | |

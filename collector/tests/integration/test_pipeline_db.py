@@ -232,32 +232,38 @@ def test_lote_do_dia_via_pipeline_recusa_e_force_publica(db):
     assert _pipeline(db, sources).run(RunOptions(force=True)).published
 
 
-def test_observacoes_fora_do_lote_da_calibragem_nao_chegam_ao_banco(db):
+def test_calibragem_publica_as_duas_fontes_e_a_comparacao_no_banco(db):
     sources = [("fundamentus", {}), ("statusinvest", {})]
     report = _pipeline(db, sources, settings=_comparable_settings()).run(RunOptions())
     snap = db.active()
-    assert report.observations_unpublished == 16
+    # P-17: as duas fontes chegam ao banco; a comparação vai em colunas próprias.
+    assert report.observations_unpublished == 0
     assert (
         db.one(
             "select count(*) from public.observations o join public.data_sources s on s.id = o.source_id "
             "where o.snapshot_id = %s and s.code = 'statusinvest'",
             snap,
         )
-        == 0
+        == 16
     )
     assert (
         db.one(
             "select count(*) from public.observations where snapshot_id = %s and source_id is not null",
             snap,
         )
-        == 16
+        == 32
     )
-    reasons = db.rows(
-        "select reason from public.field_validations where snapshot_id = %s "
-        "and status <> 'missing'",
+    rows = db.rows(
+        "select status, reason, selected_observation_id, cardinality(observation_ids), "
+        "delta_abs, limit_value, atol, rtol, tolerance_version "
+        "from public.field_validations where snapshot_id = %s and status <> 'missing'",
         snap,
     )
-    assert all(r[0].startswith("uncalibrated") for r in reasons)
+    assert len(rows) == 16
+    for status, reason, selected, count, delta, limit, atol, rtol, version in rows:
+        assert status == "incomparable" and reason.startswith("uncalibrated")
+        assert selected is None and count == 2
+        assert None not in (delta, limit, atol, rtol) and version
 
 
 def test_sem_calibragem_verified_e_divergent_chegam_ao_banco(db):

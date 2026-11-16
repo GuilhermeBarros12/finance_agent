@@ -9,12 +9,12 @@ horário de Brasília. Mais de 1 é `stale`, mais de 5 é `expired` (ADR 0001, D
 LIMITAÇÃO: feriados não são considerados nesta fatia; um feriado conta como dia útil e
 pode marcar `stale` antes da hora.
 
-Modo de calibragem: com `calibration_mode` ligado, a comparação é calculada, mas o estado
-gravado é `single_source` com `reason` "uncalibrated: ...". O contrato (T06) e a RPC (T09)
-não admitem `comparison` nem duas observações em `single_source`, então o cálculo vai no
-texto do `reason` e só a observação de maior prioridade (Fundamentus) é referenciada. A
-outra volta em `FieldResult.unpublished_observation_ids`: a RPC rejeita observação não
-coberta por validação, então o pipeline (T15) não deve publicá-la.
+Modo de calibragem (P-17): com `calibration_mode` ligado, a comparação é calculada, mas a
+tolerância ainda não foi calibrada, então o resultado não é defensável como `verified` nem
+como `divergent`. O estado gravado é `incomparable`, com as DUAS observações, sem escolher
+lado, com `reason` "uncalibrated: ..." e com a comparação em `comparison` (delta_abs,
+limite, atol, rtol e versão da tolerância). Assim as duas fontes chegam ao banco e a análise
+da T17 lê números em colunas próprias, não texto livre.
 """
 
 from __future__ import annotations
@@ -95,10 +95,6 @@ def _priority(obs: Observation) -> tuple[int, str]:
         return (DISPLAY_PRIORITY.index(obs.source_id), obs.source_id)
     except ValueError:
         return (len(DISPLAY_PRIORITY), obs.source_id)
-
-
-def _fmt(value: object) -> str:
-    return format(value, "f") if hasattr(value, "is_finite") else str(value)
 
 
 def validate_field(
@@ -209,20 +205,6 @@ def validate_field(
         first.value_decimal, second.value_decimal, atol=tol.atol, rtol=tol.rtol
     )
 
-    if tolerances.validation.calibration_mode:
-        text = (
-            f"{UNCALIBRATED}: delta_abs={_fmt(result.delta_abs)} limit={_fmt(result.limit)} "
-            f"atol={_fmt(tol.atol)} rtol={_fmt(tol.rtol)} tolerance_version={tolerances.version} "
-            f"within_limit={'true' if result.within else 'false'}"
-        )
-        return build(
-            ValidationStatus.SINGLE_SOURCE,
-            [first.observation_id],
-            fresh=freshness,
-            reason=text,
-            unpublished=[second.observation_id],
-        )
-
     comparison = Comparison(
         delta_abs=result.delta_abs,
         limit=result.limit,
@@ -230,6 +212,15 @@ def validate_field(
         rtol=tol.rtol,
         tolerance_version=tolerances.version,
     )
+    if tolerances.validation.calibration_mode:
+        # Nunca verified nem divergent antes da calibragem; nenhum lado é escolhido.
+        return build(
+            ValidationStatus.INCOMPARABLE,
+            ids,
+            fresh=freshness,
+            comparison=comparison,
+            reason=f"{UNCALIBRATED}: tolerância {tolerances.version} ainda não calibrada",
+        )
     if result.within:
         return build(
             ValidationStatus.VERIFIED,

@@ -9,7 +9,7 @@ Regras que este módulo guarda:
 * D12: se uma fonte falha para um ativo, os campos dela ficam sem observação e o motor
   produz `missing` ou `single_source`. Nada é copiado de snapshot anterior; falha nunca
   vira zero, tabela vazia nem a data de hoje.
-* Observação listada em `unpublished_observation_ids` (calibragem, comparação inválida) NÃO
+* Observação listada em `unpublished_observation_ids` (comparação inválida, fora da fatia) NÃO
   vai ao staging: a RPC recusaria observação sem validação do seu campo.
 * Observação de ativo fora do universo é descartada e registrada como falha: o motor
   lança `ValueError` para ela.

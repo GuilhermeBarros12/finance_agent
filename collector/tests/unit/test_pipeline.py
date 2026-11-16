@@ -136,7 +136,7 @@ def test_falha_total_sem_dados_vira_missing_com_motivo_e_nunca_zero():
     assert all(o.value_decimal != Decimal(0) for o in staged.observations)
 
 
-def test_calibragem_deixa_a_segunda_fonte_fora_do_staging():
+def test_calibragem_publica_as_duas_fontes_como_incomparable():
     store = FakeStore()
     settings = _settings()
     settings = settings.model_copy(
@@ -147,10 +147,15 @@ def test_calibragem_deixa_a_segunda_fonte_fora_do_staging():
     )
     staged = store.staged
     assert staged is not None
-    # 4 ativos x 4 indicadores da statusinvest ficam de fora
-    assert report.observations_unpublished == 16
-    assert {o.source_id for o in staged.observations} == {"fundamentus"}
-    assert all(v.status.value == "single_source" for v in staged.validations if v.observation_ids)
+    # P-17: nada fica de fora; 4 ativos x 4 indicadores x 2 fontes chegam ao staging.
+    assert report.observations_unpublished == 0
+    assert {o.source_id for o in staged.observations} == {"fundamentus", "statusinvest"}
+    assert len(staged.observations) == 32
+    compared = [v for v in staged.validations if v.observation_ids]
+    assert len(compared) == 16
+    assert all(v.status.value == "incomparable" for v in compared)
+    assert all(v.comparison is not None and v.selected_observation_id is None for v in compared)
+    assert report.statuses.get("verified", 0) == 0 and report.statuses.get("divergent", 0) == 0
     ids = {o.observation_id for o in staged.observations}
     assert all(i in ids for v in staged.validations for i in v.observation_ids)
 
