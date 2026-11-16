@@ -392,20 +392,36 @@ def test_fonte_repetida_vira_invalid_sem_publicar_nada():
 def test_calibragem_ligada_nunca_verified_nem_divergent(a, b):
     res = _run([_obs("fundamentus", a), _obs("statusinvest", b)], calibration=True)
     v = res.validation
-    assert v.status is ValidationStatus.SINGLE_SOURCE
-    assert v.comparison is None and v.selected_observation_id is None
-    assert v.observation_ids == ["fundamentus-AAAA3-price_to_book"]
-    assert res.unpublished_observation_ids == ("statusinvest-AAAA3-price_to_book",)
+    # P-17: nem verified nem divergent, nenhum lado escolhido, as duas fontes publicadas.
+    assert v.status is ValidationStatus.INCOMPARABLE
+    assert v.selected_observation_id is None
+    assert v.observation_ids == [
+        "fundamentus-AAAA3-price_to_book",
+        "statusinvest-AAAA3-price_to_book",
+    ]
+    assert res.unpublished_observation_ids == ()
     assert (v.reason or "").startswith("uncalibrated:")
-    assert "delta_abs=" in v.reason and "limit=" in v.reason
 
 
-def test_calibragem_registra_delta_e_limite_no_reason():
-    v = _run(
-        [_obs("fundamentus", "1.00"), _obs("statusinvest", "1.01")], calibration=True
-    ).validation
-    assert "delta_abs=0.01" in v.reason and "within_limit=true" in v.reason
-    assert "tolerance_version=draft-1" in v.reason
+@pytest.mark.parametrize(("b", "delta"), [("1.01", Decimal("0.01")), ("5.00", Decimal("4.00"))])
+def test_calibragem_registra_a_comparacao_em_campos_proprios(b, delta):
+    v = _run([_obs("fundamentus", "1.00"), _obs("statusinvest", b)], calibration=True).validation
+    tol = load_tolerances().metrics[Metric.PRICE_TO_BOOK]
+    assert v.comparison is not None
+    assert v.comparison.delta_abs == delta
+    assert v.comparison.atol == tol.atol and v.comparison.rtol == tol.rtol
+    assert v.comparison.limit == max(tol.atol, tol.rtol * max(Decimal("1.00"), Decimal(b)))
+    assert v.comparison.tolerance_version == "draft-1"
+    # O texto não carrega números: quem analisa a calibragem lê `comparison`.
+    assert "delta_abs" not in (v.reason or "")
+
+
+def test_calibragem_e_o_modo_normal_calculam_a_mesma_comparacao():
+    obs = [_obs("fundamentus", "1.00"), _obs("statusinvest", "5.00")]
+    calibrando = _run(obs, calibration=True).validation
+    normal = _run(obs, calibration=False).validation
+    assert normal.status is ValidationStatus.DIVERGENT
+    assert calibrando.comparison == normal.comparison
 
 
 def test_calibragem_nao_esconde_incomparable():
