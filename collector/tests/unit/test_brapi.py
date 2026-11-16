@@ -275,3 +275,46 @@ def test_oversized_body_fails_asset() -> None:
     with pytest.raises(FetchError):
         result_adapter.fetch(["DEMO3"])
     assert [f.asset_id for f in result_adapter.failures] == ["DEMO3"]
+
+
+_HUGE_EXPONENTS = ["1e99999999999999999999", "-1e99999999999999999999", "1e-99999999999999999999"]
+
+
+def _item(symbol: str, price: str, extra: str = "") -> bytes:
+    return (
+        f'{{"results":[{{"symbol":"{symbol}","regularMarketPrice":{price},'
+        f'"regularMarketTime":"2026-11-13T20:07:00Z"{extra}}}]}}'
+    ).encode()
+
+
+@pytest.mark.parametrize("huge", _HUGE_EXPONENTS)
+@pytest.mark.parametrize("where", ["price", "other_field", "root"])
+def test_huge_exponent_fails_only_that_asset(huge: str, where: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        symbol = request.url.params["symbols"]
+        if symbol != "HUGE3":
+            return httpx.Response(200, content=_item(symbol, "10.5"))
+        if where == "price":
+            return httpx.Response(200, content=_item(symbol, huge))
+        if where == "other_field":
+            return httpx.Response(200, content=_item(symbol, "10.5", f',"volume":{huge}'))
+        return httpx.Response(200, content=b'{"x":' + huge.encode() + b',"results":[]}')
+
+    result = _adapter(handler).collect(["DEMO3", "HUGE3", "TEST4"])
+    assert [o.asset_id for o in result.observations] == ["DEMO3", "TEST4"]
+    assert [f.asset_id for f in result.failures] == ["HUGE3"]
+
+
+@pytest.mark.parametrize("huge", _HUGE_EXPONENTS)
+def test_huge_exponent_is_parse_error(huge: str) -> None:
+    with pytest.raises(BrapiParseError):
+        _parse(_item("DEMO3", huge))
+    with pytest.raises(BrapiParseError):
+        _parse(_item("DEMO3", "10.5", f',"volume":{huge}'))
+
+
+def test_failure_reason_with_lone_surrogate_does_not_raise() -> None:
+    failure = BrapiAdapter._failure("DEMO3", "\ud800 bad\x00\n")
+    assert failure.asset_id == "DEMO3"
+    assert "bad" in failure.reason
+    failure.model_dump_json()  # serializável em UTF-8

@@ -100,7 +100,8 @@ def _load_json(content: bytes) -> Any:
         )
     except BrapiParseError:
         raise
-    except (UnicodeDecodeError, ValueError, RecursionError):
+    except (UnicodeDecodeError, ValueError, RecursionError, ArithmeticError):
+        # ArithmeticError: expoente fora do limite do Decimal (InvalidOperation, OverflowError)
         raise BrapiParseError("resposta não é JSON válido") from None
 
 
@@ -166,7 +167,10 @@ class BrapiAdapter(SourceAdapter):
     def _failure(asset: object, reason: str) -> SourceFailure:
         """Monta a falha sem nunca lançar, mesmo com ativo não representável."""
         asset_id = asset if isinstance(asset, str) and _SAFE_ID.fullmatch(asset) else "?"
-        return SourceFailure(asset_id=asset_id, source_id=SOURCE_ID, reason=reason[:200] or "falha")
+        # substitutos isolados (ex.: "\ud800") não são UTF-8 válido: viram "?"
+        clean = reason.encode("utf-8", "replace").decode("utf-8", "replace")
+        clean = "".join(c if c.isprintable() else " " for c in clean).strip()
+        return SourceFailure(asset_id=asset_id, source_id=SOURCE_ID, reason=clean[:200] or "falha")
 
     def _source_url(self, asset: str) -> str:
         return f"{self._source.base_url.rstrip('/')}{QUOTE_PATH}?{SYMBOLS_PARAM}={asset}"
@@ -263,6 +267,6 @@ class BrapiAdapter(SourceAdapter):
         for raw in records:
             try:
                 result.observations.extend(self.parse(raw))
-            except (BrapiParseError, ValueError, OverflowError) as exc:
+            except (BrapiParseError, ValueError, ArithmeticError) as exc:
                 result.failures.append(self._failure(raw.asset_id, str(exc)))
         return result
