@@ -13,6 +13,7 @@
   --verde-conferido: #1d6446;
   --ambar-alerta: #8a5200;
   --carmim: #a3281f;
+  --sobreposicao: rgb(24 33 43 / 0.6);
   color-scheme: light;
 }
 
@@ -27,6 +28,7 @@
     --verde-conferido: #7fcba4;
     --ambar-alerta: #e3b25f;
     --carmim: #ee9a92;
+    --sobreposicao: rgb(0 0 0 / 0.7);
     color-scheme: dark;
   }
 }
@@ -41,6 +43,7 @@
   --verde-conferido: #7fcba4;
   --ambar-alerta: #e3b25f;
   --carmim: #ee9a92;
+  --sobreposicao: rgb(0 0 0 / 0.7);
   color-scheme: dark;
 }
 
@@ -54,6 +57,7 @@
   --color-verde-conferido: var(--verde-conferido);
   --color-ambar-alerta: var(--ambar-alerta);
   --color-carmim: var(--carmim);
+  --color-sobreposicao: var(--sobreposicao);
   --font-sans: 'Public Sans Variable', system-ui, sans-serif;
   --font-serif: 'Source Serif 4 Variable', Georgia, serif;
   --text-nota: 0.8125rem;
@@ -68,6 +72,13 @@
 @layer base {
   html {
     font-size: 16px;
+    /* A navegação inferior fixa (45 px) não pode cobrir o controle focado. */
+    scroll-padding-bottom: 5rem;
+  }
+  @media (min-width: 768px) {
+    html {
+      scroll-padding-bottom: 1rem;
+    }
   }
   body {
     background: var(--papel);

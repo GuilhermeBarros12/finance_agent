@@ -1,34 +1,12 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { LogIn, LogOut, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { LogIn, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { ErrorState, LoadingState } from '@/components/state'
 import { Button } from '@/components/ui/button'
-import { signInWithGoogle, signOut } from '../api'
+import { signInWithGoogle } from '../api'
 import { useAuthorization } from '../hooks/useAuthorization'
 import { useSession } from '../hooks/sessionContext'
-
-function SignOutButton({ onError }: { onError: (message: string) => void }) {
-  const queryClient = useQueryClient()
-  const [pending, setPending] = useState(false)
-  async function handle() {
-    setPending(true)
-    try {
-      await signOut()
-      queryClient.clear()
-    } catch {
-      onError('Não foi possível sair. Tente de novo.')
-    } finally {
-      setPending(false)
-    }
-  }
-  return (
-    <Button variant="outline" onClick={() => void handle()} disabled={pending}>
-      <LogOut aria-hidden="true" className="size-5" />
-      Sair
-    </Button>
-  )
-}
+import { SignOutButton } from './SignOutButton'
 
 // Região fixa na página; o alerta só existe quando há mensagem (anunciada ao aparecer).
 function Notice({ message }: { message: string | null }) {

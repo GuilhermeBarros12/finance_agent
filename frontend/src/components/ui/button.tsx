@@ -4,7 +4,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-selo px-4 text-rotulo font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-selo px-4 text-rotulo font-medium transition-[background-color,border-color,color,opacity] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
   {
     variants: {
       variant: {

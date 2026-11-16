@@ -1,8 +1,10 @@
 import { Check, MessageSquare, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '@/components/state'
 import { Button } from '@/components/ui/button'
+import { authorizationKey } from '@/features/auth/hooks/useAuthorization'
 import { useSession } from '@/features/auth/hooks/sessionContext'
 import { checkTitle, type Conversation } from '../api'
 import {
@@ -12,6 +14,11 @@ import {
   useRenameConversation,
 } from '../hooks'
 import { ConfirmDialog } from './ConfirmDialog'
+
+const NEW_ID = 'nova-conversa'
+const renameId = (id: string) => `renomear-${id}`
+const deleteId = (id: string) => `excluir-${id}`
+const titleLinkId = (id: string) => `titulo-${id}`
 
 type Feedback = { kind: 'ok' | 'error'; text: string } | null
 
@@ -54,7 +61,17 @@ function RenameForm({
   }
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2">
+    <form
+      onSubmit={submit}
+      noValidate
+      className="flex flex-col gap-2"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !pending) {
+          event.stopPropagation()
+          onCancel()
+        }
+      }}
+    >
       <label htmlFor={inputId} className="text-rotulo font-medium">
         Novo título
       </label>
@@ -99,8 +116,31 @@ export function ConversationsPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<Conversation | null>(null)
   const [feedback, setFeedback] = useState<Feedback>(null)
+  // Id do elemento que deve receber o foco quando existir e estiver habilitado.
+  const pendingFocus = useRef<string | null>(null)
+  const [, setFocusRequest] = useState(0)
+  const requestFocus = (id: string) => {
+    pendingFocus.current = id
+    setFocusRequest((n) => n + 1) // garante um render depois do pedido
+  }
+  const queryClient = useQueryClient()
 
   const busy = create.isPending || rename.isPending || remove.isPending
+
+  // Lista vazia pode ser usuário revogado (a RLS filtra tudo): confere a autorização de novo.
+  const emptyAt = query.isSuccess && query.data.length === 0 ? query.dataUpdatedAt : null
+  useEffect(() => {
+    if (emptyAt !== null) void queryClient.invalidateQueries({ queryKey: authorizationKey(userId) })
+  }, [emptyAt, queryClient, userId])
+
+  useEffect(() => {
+    if (!pendingFocus.current || busy) return
+    const target = document.getElementById(pendingFocus.current) ?? document.getElementById(NEW_ID)
+    if (target && !(target as HTMLButtonElement).disabled) {
+      target.focus()
+      pendingFocus.current = null
+    }
+  })
 
   async function handleCreate() {
     setFeedback(null)
@@ -117,9 +157,11 @@ export function ConversationsPage() {
     try {
       await rename.mutateAsync({ id: conversation.id, title })
       setRenamingId(null)
+      requestFocus(renameId(conversation.id))
       setFeedback({ kind: 'ok', text: 'Título alterado.' })
     } catch {
       setRenamingId(null)
+      requestFocus(renameId(conversation.id))
       setFeedback({ kind: 'error', text: 'Não foi possível renomear a conversa. A lista mostra o que está no banco.' })
     }
   }
@@ -127,9 +169,14 @@ export function ConversationsPage() {
   async function handleDelete(conversation: Conversation) {
     setFeedback(null)
     try {
+      const list = query.data ?? []
+      const index = list.findIndex((c) => c.id === conversation.id)
+      const neighbour = list[index + 1] ?? list[index - 1]
       await remove.mutateAsync(conversation.id)
+      requestFocus(neighbour ? titleLinkId(neighbour.id) : NEW_ID)
       setFeedback({ kind: 'ok', text: 'Conversa excluída.' })
     } catch {
+      requestFocus(deleteId(conversation.id))
       setFeedback({ kind: 'error', text: 'Não foi possível excluir a conversa. A lista mostra o que está no banco.' })
     } finally {
       setDeleting(null)
@@ -137,7 +184,7 @@ export function ConversationsPage() {
   }
 
   const newButton = (
-    <Button onClick={() => void handleCreate()} disabled={busy}>
+    <Button id={NEW_ID} onClick={() => void handleCreate()} disabled={busy}>
       <Plus aria-hidden="true" className="size-5" />
       {create.isPending ? 'Criando...' : 'Nova conversa'}
     </Button>
@@ -193,12 +240,16 @@ export function ConversationsPage() {
                     conversation={conversation}
                     pending={rename.isPending}
                     onSubmit={(title) => void handleRename(conversation, title)}
-                    onCancel={() => setRenamingId(null)}
+                    onCancel={() => {
+                      setRenamingId(null)
+                      requestFocus(renameId(conversation.id))
+                    }}
                   />
                 ) : (
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="min-w-0">
                       <Link
+                        id={titleLinkId(conversation.id)}
                         to={`/conversas/${conversation.id}`}
                         className="flex min-h-11 items-center gap-2 break-words text-subtitulo font-semibold text-azul-caneta underline"
                       >
@@ -211,6 +262,7 @@ export function ConversationsPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
+                        id={renameId(conversation.id)}
                         variant="outline"
                         disabled={busy}
                         onClick={() => {
@@ -223,6 +275,7 @@ export function ConversationsPage() {
                         Renomear
                       </Button>
                       <Button
+                        id={deleteId(conversation.id)}
                         variant="outline"
                         disabled={busy}
                         onClick={() => setDeleting(conversation)}

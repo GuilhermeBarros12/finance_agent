@@ -30,6 +30,8 @@ Seis cores nomeadas, com valor para cada tema. Os tokens estão em `frontend/src
 
 Derivados, calculados a partir dos acima e também tokens: `superficie` (claro `#FFFFFF`, escuro `#1A2128`), `borda` (claro `#C9D0CA`, escuro `#303B45`) e `tinta-suave` (texto secundário; claro `#4B5967`, escuro `#A5B0BA`). Todos os pares texto/fundo acima têm contraste de pelo menos 4,5:1 (medido na T21a).
 
+Token adicionado na T21b: `sobreposicao`, o fundo atrás de diálogos modais (classe `bg-sobreposicao`). Claro `rgb(24 33 43 / 0,6)` (a tinta do tema claro, escurece o papel claro); escuro `rgb(0 0 0 / 0,7)`. Motivo: `bg-tinta/60` no tema escuro usava a tinta clara (`#E4E8E3`) e clareava a tela em vez de escurecer. O token não é cor de texto nem de estado, então não entra na tabela de contraste.
+
 ## Tipografia
 
 - Títulos e valores de destaque: **Source Serif 4** (variável), pesos 600 e 700.
@@ -45,7 +47,9 @@ Derivados, calculados a partir dos acima e também tokens: `superficie` (claro `
 - Unidade de 4 px. Escala usada: 4, 8, 12, 16, 24, 32, 48.
 - Raio: 4 px para selos e campos, 8 px para painéis. Sem sombras decorativas; hierarquia por borda de 1 px.
 - Layout utilizável a partir de 360 px: navegação inferior fixa em telas estreitas e lateral a partir de 768 px.
-- Foco visível: anel de 2 px em Azul-caneta com 2 px de afastamento, em todos os controles.
+- Foco visível: anel de 2 px em Azul-caneta com 2 px de afastamento, em todos os controles. O anel já aparece na cor final no primeiro quadro: a transição do `Button` cobre só fundo, borda, texto e opacidade, nunca `outline-color`.
+- Navegação inferior fixa (T21b): `html` tem `scroll-padding-bottom: 5rem` abaixo de 768 px (16 px a partir daí), para que um controle focado por Tab não fique atrás da barra. Todo controle no fim da página herda isso. Diálogos modais rolam por dentro (`overflow-y-auto`) e ficam acima da barra.
+- Botões de ação pendente em diálogo usam `aria-disabled` (continuam focáveis) em vez de `disabled`, para o foco não escapar.
 - Movimento só em resposta a ação (abrir, trocar tema) e desligado com `prefers-reduced-motion`.
 - Tema claro ou escuro segue o sistema (`prefers-color-scheme`). O alternador permite forçar claro, escuro ou voltar a seguir o sistema; a escolha fica em `localStorage`.
 

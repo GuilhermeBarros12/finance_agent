@@ -83,10 +83,13 @@ export function createFake() {
       if (failure) return { data: null, error: { message: failure } }
       const uid = state.session?.user.id
       const rows = state.tables[this.table] ?? []
-      const visible = (r: Row) => r.user_id === uid && this.filters.every(([c, v]) => r[c] === v)
+      // is_allowed_user() nas políticas de conversations: revogado não vê nem escreve nada.
+      const allowed = state.tables.allowed_users.some((r) => r.user_id === uid && r.enabled === true)
+      const denied = this.table === 'conversations' && !allowed
+      const visible = (r: Row) => !denied && r.user_id === uid && this.filters.every(([c, v]) => r[c] === v)
 
       if (this.op === 'insert') {
-        if (this.payload.user_id !== uid) {
+        if (denied || this.payload.user_id !== uid) {
           return { data: null, error: { message: 'new row violates row-level security policy' } }
         }
         const row: Row = { id: `c-${++state.seq}`, title: 'Nova conversa', created_at: tick(), updated_at: tick(), ...this.payload }
@@ -138,6 +141,12 @@ export function createFake() {
     },
     allow(userId = 'u1', enabled = true) {
       state.tables.allowed_users.push({ user_id: userId, enabled })
+    },
+    revoke(userId = 'u1') {
+      state.tables.allowed_users = state.tables.allowed_users.filter((r) => r.user_id !== userId)
+    },
+    setEnabled(userId: string, enabled: boolean) {
+      for (const r of state.tables.allowed_users) if (r.user_id === userId) r.enabled = enabled
     },
     addConversation(title: string, userId = 'u1') {
       const row = { id: `c-${++state.seq}`, user_id: userId, title, created_at: tick(), updated_at: tick() }

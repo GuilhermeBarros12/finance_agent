@@ -168,3 +168,109 @@ test('erro ao renomear mostra mensagem e mantém o título do banco', async () =
   expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível renomear')
   expect(titles()).toEqual(['Antiga'])
 })
+
+test('renomear sem linha afetada (conversa sumiu ou RLS) é erro, não sucesso', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Renomear Antiga' }))
+  fake.state.tables.conversations = [] // some do banco enquanto o formulário está aberto
+  fireEvent.change(screen.getByLabelText('Novo título'), { target: { value: 'Outro' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Salvar título' }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível renomear')
+  expect(screen.queryByText('Título alterado.')).toBeNull()
+})
+
+test('depois de salvar, o foco vai para o botão Renomear da mesma linha', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Renomear Antiga' }))
+  fireEvent.change(screen.getByLabelText('Novo título'), { target: { value: 'Salva' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Salvar título' }))
+  await screen.findByText('Título alterado.')
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Renomear Salva' })))
+})
+
+test('Cancelar no formulário devolve o foco ao botão Renomear', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Renomear Antiga' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Renomear Antiga' })))
+  expect(writes()).toHaveLength(0)
+})
+
+test('Esc cancela o formulário de renomear, sem escrever, e devolve o foco', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Renomear Antiga' }))
+  fireEvent.keyDown(screen.getByLabelText('Novo título'), { key: 'Escape' })
+  expect(screen.queryByLabelText('Novo título')).toBeNull()
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Renomear Antiga' })))
+  expect(writes()).toHaveLength(0)
+})
+
+test('depois de excluir, o foco vai para o título da conversa seguinte', async () => {
+  fake.addConversation('Primeira')
+  fake.addConversation('Segunda')
+  renderApp('/')
+  // ordem: Segunda, Primeira. Exclui a primeira da lista (Segunda): o foco vai para Primeira.
+  fireEvent.click(await screen.findByRole('button', { name: 'Excluir Segunda' }))
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /Excluir conversa/ }))
+  await screen.findByText('Conversa excluída.')
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Primeira' })))
+})
+
+test('depois de excluir a última conversa, o foco vai para Nova conversa', async () => {
+  fake.addConversation('Única')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Excluir Única' }))
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /Excluir conversa/ }))
+  await screen.findByText('Nenhuma conversa ainda')
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Nova conversa' })))
+})
+
+test('exclusão pendente: o Tab continua preso no diálogo e os botões não saem do foco', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  fireEvent.click(await screen.findByRole('button', { name: 'Excluir Antiga' }))
+  let release: () => void = () => {}
+  fake.state.gate = new Promise<void>((resolve) => (release = resolve))
+  const dialog = screen.getByRole('alertdialog')
+  const confirm = within(dialog).getByRole('button', { name: /Excluir conversa/ })
+  const cancel = within(dialog).getByRole('button', { name: 'Cancelar' })
+  confirm.focus()
+  fireEvent.click(confirm)
+  await within(dialog).findByRole('button', { name: /Excluindo/ })
+  expect((cancel as HTMLButtonElement).disabled).toBe(false)
+  expect(cancel.getAttribute('aria-disabled')).toBe('true')
+  expect(document.activeElement).toBe(confirm)
+  fireEvent.keyDown(confirm, { key: 'Tab' })
+  expect(document.activeElement).toBe(cancel)
+  fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(confirm)
+  fireEvent.click(cancel) // cancelar durante a exclusão não fecha nem escreve de novo
+  fireEvent.keyDown(dialog, { key: 'Escape' })
+  expect(screen.getByRole('alertdialog')).toBeTruthy()
+  fake.state.gate = null
+  release()
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+  expect(writes()).toHaveLength(1)
+})
+
+test('lista que volta vazia para usuário revogado leva a /entrar', async () => {
+  fake.addConversation('Antiga')
+  renderApp('/')
+  await screen.findByRole('list')
+  fake.revoke('u1')
+  fireEvent.click(screen.getByRole('button', { name: 'Excluir Antiga' }))
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /Excluir conversa/ }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Acesso não autorizado')
+})
+
+test('o botão Sair do layout encerra a sessão', async () => {
+  renderApp('/')
+  await screen.findByRole('heading', { name: 'Conversas' })
+  fireEvent.click(screen.getAllByRole('button', { name: 'Sair' })[0])
+  await waitFor(() => expect(fake.client.auth.signOut).toHaveBeenCalledTimes(1))
+  expect(await screen.findByRole('button', { name: 'Entrar com Google' })).toBeTruthy()
+})
