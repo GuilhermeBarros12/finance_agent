@@ -48,4 +48,4 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T22b | Publicar funções e frontend | T19, T21f, T22a | fora da leva | |
 | T23 | Exportação das conversas | — | absorvida pela T21e | |
 | T24 | Conferência manual de aceite | T17, T22b | fora da leva | |
-| T25 | Relatório final e pull request para `main` | todas as autônomas | pendente | |
+| T25 | Relatório final e pull request para `main` | todas as autônomas | em revisão (PR #10 aberto, sem merge) | |
