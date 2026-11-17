@@ -27,6 +27,10 @@ test.each(PRIVATE)('usuário negado em $path vai para /entrar com alerta', async
 test.each(PRIVATE)('usuário revogado em $path cai em /entrar ao navegar', async ({ path, heading, go }) => {
   fake.signIn('u1')
   fake.allow('u1')
+  // A rota da conversa agora é o chat real (T21c): precisa de uma conversa do usuário, com o título esperado.
+  if (path.startsWith('/conversas/')) {
+    fake.state.tables.conversations.push({ id: 'c-1', user_id: 'u1', title: heading, created_at: '2026-11-16T12:00:00Z', updated_at: '2026-11-16T12:00:00Z' })
+  }
   renderApp(path)
   await screen.findByRole('heading', { name: heading, level: 1 })
   fake.revoke('u1')

@@ -10,6 +10,7 @@ type Listener = (event: string, session: unknown) => void
 
 export interface FakeSession {
   user: { id: string }
+  access_token: string
 }
 
 const BASE = Date.UTC(2026, 10, 16, 12, 0, 0)
@@ -17,10 +18,11 @@ const BASE = Date.UTC(2026, 10, 16, 12, 0, 0)
 export function createFake() {
   const state = {
     session: null as FakeSession | null,
-    tables: { conversations: [] as Row[], allowed_users: [] as Row[] } as Record<string, Row[]>,
+    tables: { conversations: [] as Row[], allowed_users: [] as Row[], messages: [] as Row[] } as Record<string, Row[]>,
     errors: {} as Record<string, string | undefined>,
     gate: null as Promise<void> | null, // segura as escritas
-    readGate: null as Promise<void> | null, // segura as leituras
+    readGate: null as Promise<void> | null, // segura as leituras de conversations
+    messagesGate: null as Promise<void> | null, // segura as leituras de messages
     clock: 0,
     seq: 0,
     listeners: new Set<Listener>(),
@@ -34,6 +36,8 @@ export function createFake() {
     private payload: Row = {}
     private filters: [string, unknown][] = []
     private orders: [string, boolean][] = []
+    private lts: [string, number][] = []
+    private max: number | null = null
     private returning = false
     private mode: 'many' | 'maybe' = 'many'
     private table: string
@@ -63,6 +67,14 @@ export function createFake() {
       this.filters.push([column, value])
       return this
     }
+    lt(column: string, value: number) {
+      this.lts.push([column, value])
+      return this
+    }
+    limit(n: number) {
+      this.max = n
+      return this
+    }
     order(column: string, options?: { ascending?: boolean }) {
       this.orders.push([column, options?.ascending !== false])
       return this
@@ -79,14 +91,15 @@ export function createFake() {
       state.log.push({ table: this.table, op: this.op, payload: this.op === 'select' ? undefined : this.payload })
       if (this.op !== 'select' && state.gate) await state.gate
       if (this.op === 'select' && this.table === 'conversations' && state.readGate) await state.readGate
+      if (this.op === 'select' && this.table === 'messages' && state.messagesGate) await state.messagesGate
       const failure = state.errors[`${this.table}.${this.op}`]
       if (failure) return { data: null, error: { message: failure } }
       const uid = state.session?.user.id
       const rows = state.tables[this.table] ?? []
       // is_allowed_user() nas políticas de conversations: revogado não vê nem escreve nada.
       const allowed = state.tables.allowed_users.some((r) => r.user_id === uid && r.enabled === true)
-      const denied = this.table === 'conversations' && !allowed
-      const visible = (r: Row) => !denied && r.user_id === uid && this.filters.every(([c, v]) => r[c] === v)
+      const denied = (this.table === 'conversations' || this.table === 'messages') && !allowed
+      const visible = (r: Row) => !denied && r.user_id === uid && this.filters.every(([c, v]) => r[c] === v) && this.lts.every(([c, v]) => (r[c] as number) < v)
 
       if (this.op === 'insert') {
         if (denied || this.payload.user_id !== uid) {
@@ -108,8 +121,13 @@ export function createFake() {
       }
       let out = rows.filter(visible).map((r) => ({ ...r }))
       for (const [column, asc] of [...this.orders].reverse()) {
-        out = out.sort((a, b) => (String(a[column]) < String(b[column]) ? -1 : 1) * (asc ? 1 : -1))
+        out = out.sort((a, b) => {
+          const [x, y] = [a[column], b[column]]
+          const less = typeof x === 'number' && typeof y === 'number' ? x < y : String(x) < String(y)
+          return (less ? -1 : 1) * (asc ? 1 : -1)
+        })
       }
+      if (this.max !== null) out = out.slice(0, this.max)
       return { data: this.mode === 'maybe' ? (out[0] ?? null) : out, error: null }
     }
   }
@@ -137,7 +155,7 @@ export function createFake() {
     client,
     state,
     signIn(userId = 'u1') {
-      state.session = { user: { id: userId } }
+      state.session = { user: { id: userId }, access_token: `token-${userId}` }
     },
     allow(userId = 'u1', enabled = true) {
       state.tables.allowed_users.push({ user_id: userId, enabled })
@@ -153,16 +171,22 @@ export function createFake() {
       state.tables.conversations.push(row)
       return row
     },
+    addMessage(conversationId: string, row: { role: 'user' | 'assistant'; sequence_no: number; content: string; payload?: unknown; content_version?: number }, userId = 'u1') {
+      const message = { id: `m-${++state.seq}`, conversation_id: conversationId, user_id: userId, content_version: 1, payload: null, created_at: tick(), ...row }
+      state.tables.messages.push(message)
+      return message
+    },
     touch(id: string) {
       const row = state.tables.conversations.find((r) => r.id === id)
       if (row) row.updated_at = tick()
     },
     reset() {
       state.session = null
-      state.tables = { conversations: [], allowed_users: [] }
+      state.tables = { conversations: [], allowed_users: [], messages: [] }
       state.errors = {}
       state.gate = null
       state.readGate = null
+      state.messagesGate = null
       state.log = []
       state.listeners.clear()
       client.auth.signInWithOAuth.mockClear()
