@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { ErrorState, LoadingState } from '@/components/state'
 import { Button } from '@/components/ui/button'
+import { ScreenFrame } from '@/features/legal/components/ScreenFrame'
 import { signInWithGoogle } from '../api'
 import { useAuthorization } from '../hooks/useAuthorization'
 import { useSession } from '../hooks/sessionContext'
@@ -24,13 +25,15 @@ function Notice({ message }: { message: string | null }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 p-4 md:p-8">
-      <div>
-        <p className="font-serif text-subtitulo font-semibold">Agente de Investimentos</p>
-        <h1 className="mt-2 text-tela">Entrar</h1>
+    <ScreenFrame className="flex flex-col">
+      <div className="mx-auto my-auto flex w-full max-w-md flex-col gap-6">
+        <div>
+          <p className="font-serif text-subtitulo font-semibold">Agente de Investimentos</p>
+          <h1 className="mt-2 text-tela">Entrar</h1>
+        </div>
+        {children}
       </div>
-      {children}
-    </main>
+    </ScreenFrame>
   )
 }
 
