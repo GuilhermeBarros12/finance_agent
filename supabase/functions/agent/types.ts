@@ -1,6 +1,7 @@
 // Contratos internos entre o handler (puro) e os acessos ao banco (injetados).
 // As linhas de mercado vêm com numéricos já como TEXTO (cast `::text` na consulta):
 // um `numeric` lido como número JSON passaria por float e perderia escala.
+import type { LlmService } from "../_shared/llm/service.ts";
 
 export interface AssetRow {
   id: string;
@@ -116,6 +117,8 @@ export interface UserStore {
 
 // Dados de mercado (cliente administrativo; o navegador não tem acesso).
 export interface MarketStore {
+  // Tickers de ações cadastradas: o universo que o classificador pode devolver.
+  listStockSymbols(): Promise<string[]>;
   findAssets(symbols: string[]): Promise<AssetRow[]>;
   activeSnapshot(universe: string): Promise<SnapshotRow | null>;
   loadValidations(
@@ -138,9 +141,12 @@ export interface LogEntry {
   user_id?: string;
   duration_ms: number;
   error?: string;
+  // Chamadas ao provedor de LLM nesta requisição (inteiro). Sem texto do usuário.
+  llm_calls?: number;
 }
 
 export interface AgentDeps {
+  llm: LlmService;
   authenticate(jwt: string): Promise<{ userId: string } | null>;
   userStore(jwt: string): UserStore;
   system: SystemStore;

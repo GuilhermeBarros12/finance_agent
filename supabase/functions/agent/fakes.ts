@@ -3,6 +3,8 @@
 // unicidade (user_id, request_id), unicidade de sequence_no e a atualização de
 // updated_at. Dados sintéticos escritos à mão (DEMO3, TEST4, ONEA3).
 import { sha256Hex } from "./request.ts";
+import { forbiddenFetch } from "../_shared/llm/fakes.ts";
+import { createLlmService, type LlmService } from "../_shared/llm/service.ts";
 import type {
   AgentDeps,
   AssetRow,
@@ -230,6 +232,13 @@ export class FakeWorld {
   origins: string[] = [];
   failPersist = false;
   marketCalls = 0;
+  // Por padrão o LLM está desligado: um teste com `selection` não pode chamá-lo.
+  // Testes do caminho só com `message` trocam este serviço.
+  llm: LlmService = createLlmService({
+    config: { mode: "disabled" },
+    fetch: forbiddenFetch,
+    consumeQuota: () => Promise.reject(new Error("cota não deve ser tocada")),
+  });
   market = defaultMarket();
   snapshot: SnapshotRow | null = this.market.snapshot;
 
@@ -349,7 +358,13 @@ export class FakeWorld {
           return Promise.resolve();
         },
       },
+      llm: w.llm,
       market: {
+        listStockSymbols: () =>
+          Promise.resolve(
+            w.market.assets.filter((a) => a.asset_class === "stock")
+              .map((a) => a.symbol),
+          ),
         findAssets: (symbols) => {
           w.marketCalls++;
           return Promise.resolve(

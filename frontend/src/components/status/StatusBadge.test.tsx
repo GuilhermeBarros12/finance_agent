@@ -7,9 +7,9 @@ import type { FreshnessStatus, ValidationStatus } from './states'
 const validation = Object.keys(VALIDATION_VISUAL) as ValidationStatus[]
 const freshness = Object.keys(FRESHNESS_VISUAL) as FreshnessStatus[]
 
-test('cobre os seis estados de validação e os três de atualização', () => {
-  expect(validation.sort()).toEqual(['divergent', 'incomparable', 'invalid', 'missing', 'single_source', 'verified'])
-  expect(freshness.sort()).toEqual(['expired', 'fresh', 'stale'])
+test('cobre os sete estados de validação e os quatro de atualização', () => {
+  expect(validation.sort()).toEqual(['divergent', 'incomparable', 'invalid', 'missing', 'not_applicable', 'single_source', 'verified'])
+  expect(freshness.sort()).toEqual(['expired', 'fresh', 'stale', 'unknown_reference_date'])
 })
 
 test('cada estado tem texto próprio, ícone e rótulo acessível (não depende só de cor)', () => {
@@ -30,7 +30,7 @@ test('cada estado tem texto próprio, ícone e rótulo acessível (não depende 
     expect(container.querySelector('svg')).not.toBeNull()
     unmount()
   }
-  expect(labels.size).toBe(9)
+  expect(labels.size).toBe(11)
 })
 
 test('o selo mantém o tamanho de texto do guia (text-nota) ao lado da cor', () => {
