@@ -64,6 +64,7 @@ Regra: nenhum estado depende só de cor. Cada um tem ícone e texto próprios; a
 | `single_source` | só uma fonte trouxe o campo | Fonte única | círculo com ponto central | Tinta-suave | sólida |
 | `incomparable` | definições diferentes; não dá para comparar | Não comparável | sinal de igual cortado | Tinta-suave | tracejada |
 | `missing` | nenhuma fonte trouxe o campo | Sem dado | círculo vazio com traço | Tinta-suave | pontilhada |
+| `not_applicable` | o indicador não se aplica ao ativo (T21c) | Não se aplica | círculo cortado (`Ban`) | Tinta-suave | dupla (3 px) |
 | `invalid` | valor fora do intervalo plausível ou ilegível | Inválido | círculo com X | Carmim | sólida, espessa (2 px) |
 
 ## Estados de atualização
@@ -75,8 +76,21 @@ Selo `FreshnessBadge`, mesmo formato do anterior. A idade vem do servidor; o nav
 | `fresh` | dentro do prazo | Atualizado | relógio com visto | Verde-conferido | sólida |
 | `stale` | passou do prazo de atenção | Desatualizado | ampulheta | Âmbar-alerta | sólida, espessa (2 px) |
 | `expired` | passou do prazo; não use como atual | Vencido | relógio com alerta (o lucide-react não tem relógio com X) | Carmim | sólida, espessa (2 px), com a base tracejada |
+| `unknown_reference_date` | a data-base não é conhecida (T21c) | Data-base desconhecida | calendário com X | Âmbar-alerta | pontilhada |
 
 O selo tem `role="img"` e `aria-label` completo (por exemplo, "Estado da validação: Divergente").
+
+## Resposta do agente (T21c)
+
+Padrões novos, usados em `frontend/src/features/chat/`:
+
+- **Tabela que vira cartões.** Abaixo de 768 px cada ativo é um cartão (título, selo de estado, conteúdo); a partir de 768 px é uma `<table>` com cabeçalhos de coluna e de linha. Só um dos dois existe no DOM (`matchMedia`), para não duplicar conteúdo para leitor de tela.
+- **Divergência sem lado.** Os valores de um campo `divergent` usam a mesma caixa, o mesmo tamanho e o mesmo peso; a diferença e o limite vêm do servidor. O valor em destaque (serifa grande) só existe em `verified` e `single_source`.
+- **Expansão** (`verified`): botão com `aria-expanded` e `aria-controls`; o painel traz as outras fontes e a diferença entre elas.
+- **Aviso de lote desatualizado ou vencido** no cabeçalho: ícone, texto e cor (âmbar ou carmim). O estado do cabeçalho é o do catálogo, se descreve o mesmo snapshot; senão, o pior estado registrado na resposta.
+- **Valores**: uma única função (`format.ts`) formata a string decimal em pt-BR (milhar com ponto, vírgula decimal, escala preservada; `%`, `R$`, `p.p.` para diferença de percentuais). Valor ilegível mostra ícone e "valor inválido".
+- **Links de fonte**: só `https` em domínio conhecido, abrem em nova aba com `rel="noopener noreferrer"` e texto "(abre em nova aba)" para leitor de tela.
+- **Seletor manual**: diálogo com `fieldset`/`legend` por grupo, caixas de 44 px de altura (o `label` inteiro é o alvo), foco preso, Esc fecha.
 
 ## Estados de tela
 
