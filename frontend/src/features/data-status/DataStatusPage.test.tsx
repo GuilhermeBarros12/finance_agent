@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { fake } from '@/test/fakeSupabase'
 import { renderApp } from '@/test/renderApp'
 import { catalogBody, defaultSnapshot } from '@/features/chat/fixtures'
@@ -30,6 +30,8 @@ beforeEach(() => {
     }),
   )
 })
+
+afterEach(() => vi.useRealTimers())
 
 const COUNTS = { verified: 5, divergent: 4, single_source: 3, incomparable: 2, missing: 1, not_applicable: 6, invalid: 7 }
 
@@ -248,4 +250,76 @@ test('usuário revogado enquanto está em /dados cai em /entrar ao navegar', asy
   fireEvent.click(screen.getAllByRole('link', { name: 'Conversas' })[0])
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Acesso não autorizado'))
   expect(screen.queryByRole('heading', { name: 'Dados', level: 1 })).toBeNull()
+})
+
+const NOW = (iso: string) => vi.useFakeTimers({ toFake: ['Date'], now: new Date(iso) })
+const age = async () => (await screen.findByTestId('idade')).textContent
+
+test('idade do lote: dias, ao lado da data em Brasília e do estado do catálogo', async () => {
+  NOW('2026-09-21T20:05:00Z') // 3 dias depois da coleta
+  await open()
+  expect(await age()).toBe('há 3 dias')
+  const lote = screen.getByRole('heading', { name: 'Último lote de dados' }).closest('section') as HTMLElement
+  expect(lote.textContent).toContain('Idade do lote: há 3 dias')
+  expect(lote.textContent).toContain('18/09/2026')
+  expect(lote.textContent).toContain('calculado pelo servidor em dias úteis')
+})
+
+test.each([
+  ['2026-09-18T20:05:00Z', 'agora há pouco'],
+  ['2026-09-18T20:09:00Z', 'agora há pouco'],
+  ['2026-09-18T20:11:00Z', 'há menos de 1 hora'],
+  ['2026-09-18T21:04:59Z', 'há menos de 1 hora'],
+  ['2026-09-18T21:05:00Z', 'há 1 hora'],
+  ['2026-09-19T01:05:00Z', 'há 5 horas'],
+  ['2026-09-19T20:04:59Z', 'há 23 horas'],
+  ['2026-09-19T20:05:00Z', 'há 1 dia'],
+])('idade na tela com agora = %s: %s', async (now, text) => {
+  NOW(now)
+  await open()
+  expect(await age()).toBe(text)
+})
+
+test('o estado de atualização continua vindo do catálogo, não da idade', async () => {
+  // coleta de 3 dias atrás, mas o servidor (dias úteis) diz "fresh": a tela não contradiz o servidor
+  NOW('2026-09-21T20:05:00Z')
+  await open()
+  expect(await screen.findByRole('img', { name: 'Estado da atualização: Atualizado' })).toBeTruthy()
+  expect(screen.queryByRole('img', { name: /Desatualizado|Vencido/ })).toBeNull()
+})
+
+test('o estado stale do catálogo aparece mesmo com coleta recente', async () => {
+  NOW('2026-09-18T20:08:00Z')
+  catalogHandler = () => json(200, catalogBody(snapshot({ freshness: 'stale' })))
+  await open()
+  expect(await age()).toBe('agora há pouco')
+  expect(await screen.findByRole('img', { name: 'Estado da atualização: Desatualizado' })).toBeTruthy()
+})
+
+test('coleta no futuro: texto próprio, sem inventar idade', async () => {
+  NOW('2026-09-18T19:00:00Z')
+  await open()
+  expect(await age()).toBe('data de coleta no futuro')
+})
+
+test('collected_at inválido: idade indisponível, nunca hoje nem zero', async () => {
+  NOW('2026-09-21T20:05:00Z')
+  catalogHandler = () => json(200, catalogBody(snapshot({ collected_at: 'ontem' })))
+  await open()
+  expect(await age()).toBe('idade indisponível')
+  expect(screen.getByRole('heading', { name: 'Último lote de dados' }).closest('section')?.textContent).not.toMatch(/hoje|há 0/)
+})
+
+test('sem snapshot não há idade', async () => {
+  catalogHandler = () => json(200, catalogBody(null))
+  await open()
+  await screen.findByRole('heading', { name: 'Ainda não há dados coletados' })
+  expect(screen.queryByTestId('idade')).toBeNull()
+  expect(screen.queryByText(/Idade do lote/)).toBeNull()
+})
+
+test('o painel com as falhas não fica dentro de região aria-live', async () => {
+  await open()
+  const panel = (await screen.findByRole('heading', { name: 'Falhas de coleta' })).closest('[aria-live]')
+  expect(panel).toBeNull()
 })

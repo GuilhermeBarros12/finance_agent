@@ -111,7 +111,7 @@ export function LegalPage() {
           </h2>
           <p className="mt-2">
             Quando o modo por inteligência artificial é usado, o texto da pergunta é processado por um serviço externo.
-            A carteira, o e-mail, o identificador da conta e as chaves de acesso não são enviados a esse serviço.
+            A carteira, o e-mail, o identificador da conta, a sua sessão e as suas credenciais de acesso não são enviados a esse serviço.
           </p>
         </section>
 

@@ -91,3 +91,32 @@ test('endereço fora das fontes conhecidas não vira link', () => {
   expect(container.querySelector('a')).toBeNull()
   expect(container.textContent).toContain('(link indisponível)')
 })
+
+test('o rodapé existe na verificação de sessão (RequireAuth carregando)', async () => {
+  fake.client.auth.getSession.mockImplementationOnce(() => new Promise(() => undefined))
+  renderApp('/dados')
+  expect(await screen.findByText('Verificando sessão...')).toBeTruthy()
+  expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'Aviso legal' })).toBeTruthy()
+})
+
+test('o rodapé existe na verificação de acesso (RequireAllowed carregando)', async () => {
+  fake.signIn('u1')
+  fake.allow('u1')
+  const original = fake.client.from
+  vi.spyOn(fake.client, 'from').mockImplementation((table: string) =>
+    table === 'allowed_users' ? ({ select: () => ({ eq: () => ({ maybeSingle: () => new Promise(() => undefined) }) }) } as never) : original(table),
+  )
+  renderApp('/dados')
+  expect(await screen.findByText('Verificando acesso...')).toBeTruthy()
+  expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'Aviso legal' })).toBeTruthy()
+  vi.restoreAllMocks()
+})
+
+test('o rodapé existe no erro de verificação de acesso (RequireAllowed com erro)', async () => {
+  fake.signIn('u1')
+  fake.allow('u1')
+  fake.state.errors['allowed_users.select'] = 'rede'
+  renderApp('/dados')
+  expect(await screen.findByText('Não foi possível verificar o acesso')).toBeTruthy()
+  expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'Aviso legal' })).toBeTruthy()
+})

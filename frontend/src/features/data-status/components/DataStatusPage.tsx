@@ -27,8 +27,11 @@ export function DataStatusPage() {
         </p>
       </div>
 
+      {/* Região viva só para mensagens curtas; o painel inteiro (com a lista de falhas) não é anunciado. */}
       <div aria-live="polite" className="min-w-0">
-        {catalog.isPending || (catalog.isError && catalog.isFetching) ? <LoadingState label="Carregando o estado dos dados..." /> : null}
+        {catalog.isPending || (catalog.isError && catalog.isFetching) ? (
+          <LoadingState label="Carregando o estado dos dados..." />
+        ) : null}
         {catalog.isError && !catalog.isFetching ? (
           <ErrorState
             title="Não foi possível carregar o estado dos dados"
@@ -36,8 +39,9 @@ export function DataStatusPage() {
             onRetry={() => void catalog.refetch()}
           />
         ) : null}
-        {catalog.data ? <SnapshotPanel catalog={catalog.data} /> : null}
+        {catalog.data ? <p className="sr-only">Estado dos dados carregado.</p> : null}
       </div>
+      {catalog.data ? <SnapshotPanel catalog={catalog.data} /> : null}
 
       <SourcesList />
       <ExportPanel />

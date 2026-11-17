@@ -1,9 +1,9 @@
-import { AlertTriangle, CheckCircle2, CircleHelp, DatabaseZap, TriangleAlert } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleHelp, DatabaseZap, History, TriangleAlert } from 'lucide-react'
 import { EmptyState } from '@/components/state'
 import { FreshnessBadge, StatusBadge } from '@/components/status'
 import { VALIDATION_STATUSES, type Catalog, type CatalogSnapshot } from '@/features/chat/contracts'
 import { DateTime } from '@/features/chat/components/DateTime'
-import { formatDateTime } from '@/features/chat/dates'
+import { AGE_FUTURE_TEXT, AGE_UNAVAILABLE_TEXT, formatAge, formatDateTime } from '@/features/chat/dates'
 import { sourceName, isKnownSource } from '@/features/chat/safeLink'
 import { cn } from '@/lib/utils'
 
@@ -120,7 +120,7 @@ function Failures({ failures, catalog }: { failures: CatalogSnapshot['failures']
   )
 }
 
-export function SnapshotPanel({ catalog }: { catalog: Catalog }) {
+export function SnapshotPanel({ catalog, now = () => new Date() }: { catalog: Catalog; now?: () => Date }) {
   const { snapshot } = catalog
   if (snapshot === null) {
     return (
@@ -132,6 +132,8 @@ export function SnapshotPanel({ catalog }: { catalog: Catalog }) {
     )
   }
   const collected = formatDateTime(snapshot.collected_at)
+  const age = formatAge(snapshot.collected_at, now())
+  const ageIsProblem = age === AGE_FUTURE_TEXT || age === AGE_UNAVAILABLE_TEXT
   return (
     <div className="min-w-0 space-y-6">
       <section aria-labelledby="lote-titulo" className="min-w-0 rounded-painel border border-borda bg-superficie p-4">
@@ -149,6 +151,16 @@ export function SnapshotPanel({ catalog }: { catalog: Catalog }) {
           )}{' '}
           <span className="text-tinta-suave">(horário de Brasília)</span>
         </p>
+        <p className={cn('mt-1 flex items-start gap-2', ageIsProblem && 'font-medium text-ambar-alerta')}>
+          {ageIsProblem ? (
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          ) : (
+            <History aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          )}
+          <span>
+            Idade do lote: <span data-testid="idade">{age}</span>
+          </span>
+        </p>
         <p className="mt-1 text-rotulo">
           {snapshot.assets_updated} de {snapshot.assets_total} ativos atualizados
         </p>
@@ -157,6 +169,10 @@ export function SnapshotPanel({ catalog }: { catalog: Catalog }) {
           <span className="text-nota text-tinta-suave">estado atual do lote</span>
         </div>
         <FreshnessNotice status={snapshot.freshness} />
+        <p className="mt-3 max-w-prose text-nota text-tinta-suave">
+          A idade conta o tempo corrido desde a coleta. O estado de atualização é calculado pelo servidor em dias úteis
+          (segunda a sexta); por isso os dois podem parecer diferentes, por exemplo num fim de semana.
+        </p>
         <p className="mt-3 text-nota text-tinta-suave">
           {catalog.universe_version === null
             ? 'Versão da lista de ações: não informada.'

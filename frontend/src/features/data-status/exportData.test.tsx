@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { fake } from '@/test/fakeSupabase'
 import { renderApp } from '@/test/renderApp'
 import { catalogBody, seedPayload } from '@/features/chat/fixtures'
-import { exportConfig, exportFileName, FORMAT_VERSION } from './exportData'
+import { downloadText, exportConfig, exportFileName, FORMAT_VERSION, REVOKE_DELAY_MS } from './exportData'
 
 vi.mock('@/lib/supabase', async () => ({ supabase: (await import('@/test/fakeSupabase')).fake.client }))
 
@@ -221,7 +221,7 @@ test('nome do arquivo sem dados pessoais, data da exportação e revogação da 
   expect(clicks[0].name).toBe('exportacao-2026-11-16.json')
   expect(clicks[0].name).toMatch(/^exportacao-\d{4}-\d{2}-\d{2}\.json$/)
   expect(clicks[0].href).toBe('blob:teste/1')
-  expect(revoked).toEqual(['blob:teste/1'])
+  await waitFor(() => expect(revoked).toEqual(['blob:teste/1']))
   const file = JSON.parse(await readBlob(blobs[0]))
   expect(file.exported_at).toBe('2026-11-17T01:30:00.000Z')
   expect(screen.getByText(/exportacao-2026-11-16\.json/)).toBeTruthy()
@@ -260,4 +260,20 @@ test('sem dados: exporta arquivo com listas vazias (vazio de verdade, não falha
   expect(file.messages).toEqual([])
   expect(file.portfolio_items).toEqual([])
   expect(file.complete).toBe(true)
+})
+
+test('a URL é revogada depois do clique, não antes', () => {
+  vi.useFakeTimers()
+  downloadText('{}', 'x.json')
+  expect(clicks).toHaveLength(1)
+  expect(revoked).toEqual([])
+  vi.advanceTimersByTime(REVOKE_DELAY_MS - 1)
+  expect(revoked).toEqual([])
+  vi.advanceTimersByTime(1)
+  expect(revoked).toEqual(['blob:teste/1'])
+})
+
+test('o lembrete de backup semanal aparece na tela de exportação', async () => {
+  renderApp('/dados')
+  expect(await screen.findByText(/Guarde uma cópia por semana, fora do repositório/)).toBeTruthy()
 })

@@ -4,6 +4,7 @@
 import { supabase } from '@/lib/supabase'
 
 export const FORMAT_VERSION = 1
+export const REVOKE_DELAY_MS = 1000
 
 // Controles que os testes ajustam. PostgREST limita a resposta (1000 linhas por padrão);
 // a leitura segue por cursor até uma página vazia, então um limite menor no servidor não
@@ -140,7 +141,7 @@ export async function buildExport(onProgress: ExportProgress = () => undefined, 
 }
 
 // Baixa o texto como arquivo, no navegador: Blob, URL temporária, <a download>. A URL é
-// revogada logo depois do clique.
+// revogada pouco depois do clique.
 export function downloadText(text: string, fileName: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
   try {
@@ -153,6 +154,7 @@ export function downloadText(text: string, fileName: string): void {
     link.click()
     link.remove()
   } finally {
-    URL.revokeObjectURL(url)
+    // Revoga depois de um instante: Firefox e Safari podem precisar da URL viva logo após o clique.
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS)
   }
 }

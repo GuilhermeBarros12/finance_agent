@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Loader2, TriangleAlert } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Download, Loader2, TriangleAlert } from 'lucide-react'
 import { ErrorState } from '@/components/state'
 import { Button } from '@/components/ui/button'
 import { PART_LABEL } from '../exportData'
@@ -17,6 +17,10 @@ export function ExportPanel() {
         é montado neste navegador e nada é enviado a nenhum servidor. Na carteira, cada ação sai com o identificador
         interno, não com o símbolo.
       </p>
+      <p className="mt-2 flex max-w-prose items-start gap-2">
+        <CalendarClock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+        <span>Guarde uma cópia por semana, fora do repositório. O arquivo tem dados pessoais.</span>
+      </p>
       <div className="mt-4">
         <Button variant="outline" aria-disabled={running} onClick={() => void run()}>
           <Download aria-hidden="true" className="size-5" />
@@ -25,7 +29,7 @@ export function ExportPanel() {
       </div>
       <div aria-live="polite" className="mt-4 min-w-0">
         {running ? (
-          <p role="status" className="flex items-start gap-2 text-tinta-suave">
+          <p className="flex items-start gap-2 text-tinta-suave">
             <Loader2 aria-hidden="true" className="mt-0.5 size-5 shrink-0 animate-spin motion-reduce:animate-none" />
             <span>
               Exportando: lendo {PART_LABEL[state.part]}
