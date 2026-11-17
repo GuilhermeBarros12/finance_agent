@@ -13,7 +13,7 @@ const LINKS = [
 
 function linkClass({ isActive }: { isActive: boolean }) {
   return cn(
-    'flex min-h-11 flex-1 items-center justify-center gap-2 px-3 text-rotulo md:flex-none md:justify-start md:rounded-selo',
+    'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 px-1 text-rotulo min-[360px]:gap-2 min-[360px]:px-3 md:flex-none md:justify-start md:rounded-selo',
     isActive ? 'font-semibold text-azul-caneta underline decoration-2 underline-offset-8' : 'text-tinta',
   )
 }

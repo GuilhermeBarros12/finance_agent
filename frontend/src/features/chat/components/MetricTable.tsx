@@ -1,5 +1,5 @@
 import { AlertOctagon, AlertTriangle, ChevronDown, ExternalLink, Info } from 'lucide-react'
-import { useId, useState, useSyncExternalStore } from 'react'
+import { createContext, useContext, useId, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { FreshnessBadge, StatusBadge, type FreshnessStatus } from '@/components/status'
 import { cn } from '@/lib/utils'
 import {
@@ -14,6 +14,7 @@ import { formatDateTime, formatReference } from '../dates'
 import { isKnownSource, safeSourceUrl, sourceName } from '../safeLink'
 import { warningText } from '../texts'
 import { deltaUnit, unitFor } from '../units'
+import { DateTime } from './DateTime'
 import { Value } from './Value'
 
 // A tabela é montada só com o payload (D21): sem nova chamada ao servidor, sem cálculo.
@@ -28,19 +29,35 @@ function worstFreshness(validations: EvidenceValidation[]): FreshnessStatus {
   return worst
 }
 
-const WIDE = '(min-width: 768px)'
-function useIsWide(): boolean {
+// Tabela ou cartões? Decide pela largura do PRÓPRIO bloco (não da janela): com a barra lateral
+// e os recuos, a mesma janela pode dar pouco espaço. Abaixo desta largura (px) vira cartões, que
+// nunca dependem do conteúdo; a tabela só aparece quando cabem, lado a lado, o ticker, o selo
+// mais largo e duas caixas de valor de até 18 caracteres (medido, ver docs/tarefas/T21c.md).
+export const TABLE_MIN_WIDTH = 960
+
+const WideContext = createContext(true)
+
+function useWideLayout(ref: RefObject<HTMLElement | null>): boolean {
   return useSyncExternalStore(
     (notify) => {
-      if (typeof window.matchMedia !== 'function') return () => {}
-      const list = window.matchMedia(WIDE)
-      list.addEventListener('change', notify)
-      return () => list.removeEventListener('change', notify)
+      const el = ref.current
+      if (!el || typeof ResizeObserver === 'undefined') return () => {}
+      const observer = new ResizeObserver(notify)
+      observer.observe(el)
+      return () => observer.disconnect()
     },
-    () => (typeof window.matchMedia === 'function' ? window.matchMedia(WIDE).matches : true),
+    // Sem ResizeObserver (jsdom) assume largo. O instantâneo é um booleano: estável entre leituras.
+    () => (ref.current && typeof ResizeObserver !== 'undefined' ? ref.current.getBoundingClientRect().width >= TABLE_MIN_WIDTH : true),
     () => true,
   )
 }
+
+// Duas colunas só quando a largura permite: na tabela sempre (a tabela já garantiu o espaço);
+// nos cartões, pela largura do cartão (container query), não da janela.
+const boxesGrid = (wide: boolean) =>
+  wide ? 'grid-cols-[repeat(2,minmax(0,1fr))]' : 'grid-cols-[minmax(0,1fr)] @min-[32rem]:grid-cols-[repeat(2,minmax(0,1fr))]'
+const figuresGrid = (wide: boolean) =>
+  wide ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-1 @min-[32rem]:grid-cols-[auto_minmax(0,1fr)]'
 
 type Resolved = { ok: true; validation: EvidenceValidation; observations: EvidenceObservation[] } | { ok: false }
 
@@ -122,7 +139,7 @@ function ObservationMeta({ observation }: { observation: EvidenceObservation }) 
         Fonte: <SourceLink observation={observation} />
       </div>
       <div>
-        Coletado em <span className="whitespace-nowrap">{formatDateTime(observation.collected_at)}</span>
+        Coletado em <DateTime iso={observation.collected_at} />
       </div>
       {observation.reference_at ? (
         <div>
@@ -147,11 +164,12 @@ function ObservationBox({ observation, metric }: { observation: EvidenceObservat
 }
 
 function ComparisonFigures({ validation, observations }: { validation: EvidenceValidation; observations: EvidenceObservation[] }) {
+  const wide = useContext(WideContext)
   const c = validation.comparison
   if (!c) return null
   const unit = deltaUnit(unitFor(observations[0]?.unit ?? '', validation.metric))
   return (
-    <dl className="mt-2 grid grid-cols-1 gap-x-3 min-[480px]:grid-cols-[auto_minmax(0,1fr)] text-rotulo">
+    <dl className={cn('mt-2 grid gap-x-3 text-rotulo', figuresGrid(wide))}>
       <dt className="text-tinta-suave">Diferença entre as fontes</dt>
       <dd className="min-w-0">
         <Value value={c.delta_abs} unit={unit} />
@@ -215,13 +233,14 @@ function VerifiedCell({ validation, observations }: { validation: EvidenceValida
 }
 
 function CellBody({ validation, observations }: { validation: EvidenceValidation; observations: EvidenceObservation[] }) {
+  const wide = useContext(WideContext)
   switch (validation.status) {
     case 'verified':
       return <VerifiedCell validation={validation} observations={observations} />
     case 'divergent':
       return (
         <div>
-          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))]">
+          <ul className={cn('grid gap-2', boxesGrid(wide))}>
             {observations.map((o) => (
               <ObservationBox key={o.observation_id} observation={o} metric={validation.metric} />
             ))}
@@ -250,7 +269,7 @@ function CellBody({ validation, observations }: { validation: EvidenceValidation
       return (
         <div>
           {observations.length > 0 ? (
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))]">
+            <ul className={cn('grid gap-2', boxesGrid(wide))}>
               {observations.map((o) => (
                 <ObservationBox key={o.observation_id} observation={o} metric={validation.metric} />
               ))}
@@ -344,7 +363,7 @@ function MetricSection({
           {rows.map(({ id, resolved }) => (
             <li
               key={id}
-              className="min-w-0 rounded-painel border border-borda bg-superficie p-3"
+              className="@container min-w-0 rounded-painel border border-borda bg-superficie p-3"
               data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}
             >
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -361,7 +380,8 @@ function MetricSection({
 }
 
 export function MetricTable({ payload, catalog }: { payload: AnswerPayload; catalog?: Catalog | null }) {
-  const wide = useIsWide()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const wide = useWideLayout(rootRef)
   const resolve = makeResolver(payload)
   const metricLabel = (metric: string) =>
     catalog?.metrics.find((m) => m.metric === metric)?.label ?? (isMetric(metric) ? METRIC_LABEL[metric] : 'Indicador')
@@ -375,12 +395,13 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
   const headerId = useId()
 
   return (
-    <div className="mt-2 min-w-0 [overflow-wrap:break-word]">
+    <WideContext.Provider value={wide}>
+    <div ref={rootRef} className="mt-2 min-w-0 [overflow-wrap:break-word]">
       <header aria-labelledby={headerId} className="min-w-0 rounded-painel border border-borda bg-superficie p-3">
         <h2 id={headerId} className="text-rotulo font-semibold">Dados do lote</h2>
         <p className="text-rotulo">
           Coletado em{' '}
-          {collected === 'data inválida' ? collected : <time dateTime={payload.snapshot_collected_at} className="whitespace-nowrap">{collected}</time>}
+          {collected === 'data inválida' ? collected : <time dateTime={payload.snapshot_collected_at}><DateTime iso={payload.snapshot_collected_at} /></time>}
         </p>
         <p className="text-rotulo">
           {assets_updated} de {assets_total} ativos atualizados
@@ -420,7 +441,7 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
                 {section.validation_ids.map((id) => {
                   const resolved = resolve(id, null)
                   return (
-                    <li key={id} className="min-w-0 rounded-painel border border-borda bg-superficie p-3" data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}>
+                    <li key={id} className="@container min-w-0 rounded-painel border border-borda bg-superficie p-3" data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}>
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <h4 className="font-semibold">
                           {resolved.ok ? (
@@ -463,5 +484,6 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
         </section>
       ) : null}
     </div>
+    </WideContext.Provider>
   )
 }

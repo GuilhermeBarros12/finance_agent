@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import type { FreshnessStatus } from '@/components/status'
 import { readCatalog, readPayload, type AnswerPayload } from '../contracts'
 import { catalogBody, defaultSnapshot, obs, seedPayload, val } from '../fixtures'
-import { MetricTable } from './MetricTable'
+import { MetricTable, TABLE_MIN_WIDTH } from './MetricTable'
 
 afterEach(() => {
-  Reflect.deleteProperty(window, 'matchMedia')
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function payloadOf(raw: Record<string, unknown>): AnswerPayload {
@@ -15,6 +16,8 @@ function payloadOf(raw: Record<string, unknown>): AnswerPayload {
   return parsed
 }
 
+// Valor longo vem partido em pedaços (sinal e dígitos ligados): confere o texto do elemento todo.
+const byValue = (text: string) => (_: string, el: Element | null) => el?.tagName === 'SPAN' && el.textContent === text
 const cell = (asset: string, metric: string) => screen.getByTestId(`cell-${asset}-${metric}`)
 
 function sevenStates(): Record<string, unknown> {
@@ -51,7 +54,7 @@ test('renderiza os sete estados de validação, cada um com o texto do selo', ()
 test('cabeçalho: data do snapshot em Brasília, manifesto e estado de atualização', () => {
   render(<MetricTable payload={payloadOf(seedPayload())} />)
   const header = screen.getByRole('banner')
-  expect(within(header).getByText(/18\/09\/2026/).textContent).toContain('17:05')
+  expect(header.querySelector('time')!.textContent).toBe('18/09/2026, 17:05')
   expect(within(header).getByText('11 de 12 ativos atualizados')).toBeTruthy()
   expect(within(header).getByRole('img', { name: /Estado da atualização/ })).toBeTruthy()
 })
@@ -154,9 +157,9 @@ test('sem aritmética: valores de 30 dígitos passam intactos, inclusive na dife
   ev.validations[1].comparison.limit = '999999999999999999999999999999.99'
   render(<MetricTable payload={payloadOf(raw)} />)
   const c = cell('DEMO3', 'dividend_yield')
-  expect(within(c).getByText('123.456.789.012.345.678.901.234.567.890,55%')).toBeTruthy()
-  expect(within(c).getByText('123.456.789.012.345.678.901.234.567.891,55%')).toBeTruthy()
-  expect(within(c).getByText('999.999.999.999.999.999.999.999.999.999,99 p.p.')).toBeTruthy()
+  expect(within(c).getByText(byValue('123.456.789.012.345.678.901.234.567.890,55%'))).toBeTruthy()
+  expect(within(c).getByText(byValue('123.456.789.012.345.678.901.234.567.891,55%'))).toBeTruthy()
+  expect(within(c).getByText(byValue('999.999.999.999.999.999.999.999.999.999,99 p.p.'))).toBeTruthy()
 })
 
 test('valor ilegível mostra "valor inválido", nunca NaN nem zero', () => {
@@ -239,14 +242,43 @@ test('avisos têm texto fixo por código, sem eco do texto do servidor', () => {
   expect(screen.queryByText(/ECO DO SERVIDOR/)).toBeNull()
 })
 
-test('a 360 px (sem matchMedia largo) a tabela vira cartões por ativo, sem <table>', () => {
-  Object.defineProperty(window, 'matchMedia', {
-    configurable: true,
-    value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-  })
+// Largura do bloco da resposta: abaixo de TABLE_MIN_WIDTH vira cartões; a partir dela, tabela.
+function stubBlockWidth(width: number) {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width, height: 100, top: 0, left: 0, right: width, bottom: 100, x: 0, y: 0, toJSON() {} })
+}
+
+test('com o bloco estreito (360 px) a tabela vira cartões por ativo, sem <table>', () => {
+  stubBlockWidth(330)
   render(<MetricTable payload={payloadOf(seedPayload())} />)
   expect(screen.queryByRole('table')).toBeNull()
   expect(within(cell('DEMO3', 'dividend_yield')).getByRole('heading', { level: 4, name: 'DEMO3' })).toBeTruthy()
+  // Cartões usam container query (largura do cartão) para decidir duas colunas ou uma.
+  expect(cell('DEMO3', 'dividend_yield').className).toContain('@container')
+  expect(cell('DEMO3', 'dividend_yield').querySelector('ul')!.className).toContain('@min-[32rem]:')
+  // Rótulo e valor de diferença/limite empilham no cartão estreito e só ficam lado a lado em cartão largo.
+  fireEvent.click(within(cell('DEMO3', 'price_to_book')).getByRole('button', { name: 'Ver as outras fontes' }))
+  const dl = cell('DEMO3', 'price_to_book').querySelector('dl')!
+  expect(dl.className).toContain('grid-cols-1')
+  expect(dl.className).toContain('@min-[32rem]:grid-cols-[auto_minmax(0,1fr)]')
+})
+
+test('a tabela só aparece quando o bloco tem a largura mínima (TABLE_MIN_WIDTH)', () => {
+  // Medido: ticker + selo mais largo + duas caixas de valor de 18 caracteres precisam de ~950 px.
+  expect(TABLE_MIN_WIDTH).toBeGreaterThanOrEqual(960)
+  stubBlockWidth(TABLE_MIN_WIDTH - 1)
+  const first = render(<MetricTable payload={payloadOf(seedPayload())} />)
+  expect(screen.queryByRole('table')).toBeNull()
+  first.unmount()
+  stubBlockWidth(TABLE_MIN_WIDTH)
+  render(<MetricTable payload={payloadOf(seedPayload())} />)
+  expect(screen.getAllByRole('table').length).toBe(2)
+  // Na tabela o conteúdo define a largura das colunas: nada de container (conteúdo isolado
+  // colapsaria a coluna) e as duas colunas de valores são fixas.
+  const row = cell('DEMO3', 'dividend_yield')
+  expect(row.outerHTML).not.toContain('@container')
+  expect(row.querySelector('ul')!.className).toContain('grid-cols-[repeat(2,minmax(0,1fr))]')
+  expect(row.querySelector('ul')!.className).not.toContain('@min-')
 })
 
 test('a 768 px ou mais é uma tabela com cabeçalhos de coluna e de linha', () => {
@@ -266,12 +298,19 @@ test('reflow: valor longo quebra em qualquer ponto; as caixas podem encolher (WC
   ev.validations[1].comparison!.delta_abs = long
   render(<MetricTable payload={payloadOf(raw)} />)
   const root = screen.getByRole('banner').parentElement!
-  const longValues = [...root.querySelectorAll('span')].filter((s) => /9\.999\.999\.999/.test(s.textContent ?? '') && s.children.length === 0)
+  const longValues = [...root.querySelectorAll('span')].filter((s) => s.className.includes('overflow-wrap:anywhere') && /9\.999\.999\.999/.test(s.textContent ?? ''))
   expect(longValues.length).toBeGreaterThanOrEqual(3)
   for (const el of longValues) {
-    expect(el.className, el.textContent ?? '').toContain('[overflow-wrap:anywhere]')
     expect(el.className).not.toContain('whitespace-nowrap')
+    // Os primeiros dígitos e os últimos (com % ou p.p.) ficam juntos; só o meio quebra.
+    const [head, , tail] = [...el.childNodes]
+    expect((head as Element).className).toContain('whitespace-nowrap')
+    expect((tail as Element).className).toContain('whitespace-nowrap')
   }
+  const heads = longValues.map((el) => el.firstElementChild!.textContent)
+  expect(heads).toContain('999')
+  expect(longValues.some((el) => el.lastElementChild!.textContent === '5%')).toBe(true)
+  expect(longValues.some((el) => /p\.p\.$/.test(el.lastElementChild!.textContent ?? ''))).toBe(true)
   // Itens de lista/grade com valor precisam poder encolher.
   const items = within(cell('DEMO3', 'dividend_yield')).getAllByRole('listitem')
   expect(items.length).toBe(2)
@@ -294,7 +333,9 @@ test('legibilidade: valores curtos, tickers, selos e fontes não quebram; anywhe
   }
   for (const el of screen.getAllByText('DEMO3')) nowrap(el, 'ticker')
   for (const el of screen.getAllByText('18/09/2026')) nowrap(el, 'data-base')
-  for (const el of screen.getAllByText(/^18\/09\/2026, 17:0[12]$/)) nowrap(el, 'data da coleta')
+  // Data e hora são partes separadas: a frase pode quebrar entre elas, as partes não.
+  for (const el of screen.getAllByText(/^18\/09\/2026,$/)) nowrap(el, 'data da coleta')
+  for (const el of screen.getAllByText(/^17:0[12]$/)) nowrap(el, 'hora da coleta')
   for (const el of screen.getAllByText('Fundamentus')) nowrap(el.closest('span.whitespace-nowrap') ?? el, 'fonte')
   for (const el of screen.getAllByText('StatusInvest')) nowrap(el, 'fonte')
   for (const badge of screen.getAllByRole('img')) nowrap(badge, badge.getAttribute('aria-label') ?? '')
@@ -304,8 +345,9 @@ test('legibilidade: valores curtos, tickers, selos e fontes não quebram; anywhe
   for (const el of anywhere) expect(el.textContent).toMatch(/^Motivo: /)
   // O rótulo e o valor de diferença/limite empilham em tela estreita.
   const dl = cell('DEMO3', 'price_to_book').querySelector('dl')!
-  expect(dl.className).toContain('grid-cols-1')
-  expect(dl.className).toContain('min-[480px]:grid-cols-')
+  // Tabela (largura garantida): rótulo e valor lado a lado, sem depender da janela.
+  expect(dl.className).toContain('grid-cols-[auto_minmax(0,1fr)]')
+  expect(dl.className).not.toContain('@min-')
   // Sem larguras fixas pequenas nas colunas da tabela.
   expect(root.innerHTML).not.toMatch(/table-fixed|w-\[17%\]|w-\[24%\]/)
 })
