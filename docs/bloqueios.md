@@ -62,3 +62,20 @@ Bloqueios que dependem só do autor e já eram conhecidos antes da execução es
 - **O que destravava:** o autor repõe créditos para o modelo do revisor (ou autoriza explicitamente outro modelo em `.claude/agents/revisor-tarefa.md`). Depois, `/executar-plano`: a T21c está `em revisão` e é retomada no branch `tarefa/T21c` direto no passo da revisão (passo 5 de `.claude/commands/tarefa.md`). Bloqueia T21d, T21e e T21f.
 - **Pontos para o revisor** (levantados pelo orquestrador): `divergent` sem lado em destaque; nenhuma aritmética nem `float` em valor; HTML do backend sempre como texto; reutilização do `request_id`; as capturas de `docs/capturas/` cresceram para 3,6 MB (algumas com 420 KB e 5.380 px de altura, o pedido era "pequenas"); `limit` (e não `limit_value`) é a chave no payload.
 
+### T21d — Carteira (2026-11-17)
+
+- **Motivo:** o plano contradiz o backend. O front não consegue ler, mostrar nem montar a carteira com os contratos que existem. O `CLAUDE.md` manda parar e registrar nesse caso.
+- **O que foi encontrado (o executor reportou e o orquestrador conferiu no código):**
+  - `portfolio_items.asset_id` é `uuid`, com FK para `assets.id` (`supabase/migrations/20261114000002_private_data.sql`, linha 77). O grant de insert é só `(user_id, asset_id)`.
+  - `GET /catalog` devolve `assets[].asset_id` como o **símbolo** (`DEMO3`), sem o uuid (`supabase/functions/catalog/types.ts`, `docs/api.md`).
+  - O navegador não lê `assets`: a migration `20261114000003_rls_grants.sql` revoga tudo em `assets` de `anon` e `authenticated`, sem política.
+  - Consequências: o seletor de "Adicionar" só conhece símbolos, e o insert exige o uuid (símbolo em coluna `uuid` dá erro `22P02`); a leitura de `portfolio_items` devolve uuids que o front não sabe traduzir em símbolo; não dá para saber quais ações já estão na carteira (passo 2) nem montar `selection.asset_ids` com símbolos, que é o que `/agent` exige (`^[A-Z0-9]{1,12}$`) no passo 5.
+- **O que foi tentado:** o executor parou antes de implementar e não alterou nenhum arquivo. Inventar um contrato no front esconderia o problema.
+- **Estado do código:** nada foi implementado. O branch `tarefa/T21d` no remoto só tem o commit "marca em andamento".
+- **O que destrava (decisão do autor; a P-21 em `docs/pendencias.md` tem o resumo):**
+  - **Opção A (a menor, recomendada pelo executor):** `GET /catalog` passa a devolver também `assets[].id` (o uuid de `assets.id`). Muda só a função `catalog` e `docs/api.md`. O front usa o uuid no insert e na leitura de `portfolio_items` e cruza com o catálogo para mostrar símbolo e nome; os `asset_ids` enviados a `/agent` continuam sendo símbolos. Não abre nenhuma tabela nova ao navegador. O uuid é um identificador, não um segredo.
+  - **Opção B:** dar ao `authenticated` leitura de `assets (id, symbol)` por view ou política. Abre uma tabela de mercado ao navegador e muda a regra de acesso (D13/README 8.x). Não recomendada.
+  - **Opção C:** função SQL `security invoker` ou RPC que devolva `portfolio_items` com o símbolo, mais o catálogo com uuid. Mais trabalho que a A.
+- **Decisões de desenho já tomadas, para quando destravar:** o backend limita a `selection` a 20 ativos (`MAX_ASSETS = 20` em `supabase/functions/agent/request.ts`), então impedir adicionar além de 20, com aviso visível; reaproveitar `postAgent` e `errorView` da T21c e o `ConfirmDialog` da T21b; `createConversation` passa a devolver o id da conversa; se o envio falhar depois de criar a conversa, a conversa fica e o usuário reenvia de dentro dela.
+- **Bloqueia:** a T21f (depende da T21d). A T21e não depende dela e segue.
+
