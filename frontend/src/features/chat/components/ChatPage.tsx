@@ -20,7 +20,7 @@ function MessageItem({ message, catalog }: { message: ChatMessage; catalog: Retu
   )
   const unreadable = !isUser && message.payload !== null && payload === null
   return (
-    <li id={messageDomId(message.id)} tabIndex={-1} className="rounded-painel border border-borda bg-superficie p-3 md:p-4">
+    <li id={messageDomId(message.id)} tabIndex={-1} className="min-w-0 rounded-painel border border-borda bg-superficie p-3 md:p-4">
       <p className="flex items-center gap-2 text-rotulo font-semibold">
         {isUser ? <User aria-hidden="true" className="size-5" /> : <Bot aria-hidden="true" className="size-5" />}
         {isUser ? 'Você' : 'Agente'}
@@ -48,8 +48,13 @@ function codePoints(text: string) {
   return [...text].length
 }
 
+// `key={id}`: trocar de conversa remonta a tela, sem herdar rascunho, seleção ou request_id.
 export function ChatPage() {
   const { id = '' } = useParams()
+  return <ChatConversation key={id} id={id} />
+}
+
+function ChatConversation({ id }: { id: string }) {
   const session = useSession()
   const userId = session.status === 'ready' ? (session.session?.user.id ?? '') : ''
   const conversation = useConversation(userId, id)
@@ -161,7 +166,7 @@ export function ChatPage() {
           : ''
 
   return (
-    <section>
+    <section className="min-w-0">
       <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-azul-caneta underline">
         <ArrowLeft aria-hidden="true" className="size-5" />
         Conversas
@@ -206,7 +211,7 @@ export function ChatPage() {
                 description="Pergunte sobre um indicador de uma ação, ou escolha ações e indicadores no seletor."
               />
             ) : (
-              <ol aria-label="Mensagens" className="grid gap-3">
+              <ol aria-label="Mensagens" className="grid grid-cols-[minmax(0,1fr)] gap-3">
                 {list.map((m) => (
                   <MessageItem key={m.id} message={m} catalog={catalog.data} />
                 ))}

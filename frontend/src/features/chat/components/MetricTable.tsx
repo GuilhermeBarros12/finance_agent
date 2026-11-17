@@ -60,6 +60,8 @@ function makeResolver(payload: AnswerPayload) {
     }
     const needs = validation.status === 'verified' || validation.status === 'divergent' ? 2 : validation.status === 'single_source' ? 1 : 0
     if (found.length < needs) return { ok: false }
+    // Fonte única tem exatamente uma observação; mais de uma é dado inconsistente.
+    if (validation.status === 'single_source' && found.length !== 1) return { ok: false }
     if (validation.selected_observation_id && !validation.observation_ids.includes(validation.selected_observation_id)) {
       return { ok: false }
     }
@@ -117,7 +119,7 @@ function ObservationMeta({ observation }: { observation: EvidenceObservation }) 
 // Todos os valores de uma comparação têm o mesmo peso visual: nenhum lado em destaque.
 function ObservationBox({ observation, metric }: { observation: EvidenceObservation; metric: string }) {
   return (
-    <li className="rounded-selo border border-borda p-3">
+    <li className="min-w-0 rounded-selo border border-borda p-3">
       <p className="text-nota font-medium">{sourceName(observation.source_id)}</p>
       <p className="font-serif text-subtitulo font-semibold">
         <Value value={observation.value_decimal} unit={unitFor(observation.unit, metric)} />
@@ -132,13 +134,13 @@ function ComparisonFigures({ validation, observations }: { validation: EvidenceV
   if (!c) return null
   const unit = deltaUnit(unitFor(observations[0]?.unit ?? '', validation.metric))
   return (
-    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 text-rotulo">
+    <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 text-rotulo">
       <dt className="text-tinta-suave">Diferença entre as fontes</dt>
-      <dd>
+      <dd className="min-w-0">
         <Value value={c.delta_abs} unit={unit} />
       </dd>
       <dt className="text-tinta-suave">Limite de tolerância</dt>
-      <dd>
+      <dd className="min-w-0">
         <Value value={c.limit} unit={unit} />
       </dd>
     </dl>
@@ -164,7 +166,7 @@ function VerifiedCell({ validation, observations }: { validation: EvidenceValida
   const others = observations.filter((o) => o !== main)
   const unit = unitFor(main.unit, validation.metric)
   return (
-    <div>
+    <div className="min-w-0">
       <p className="font-serif text-tela font-semibold">
         <Value value={main.value_decimal} unit={unit} />
       </p>
@@ -182,7 +184,7 @@ function VerifiedCell({ validation, observations }: { validation: EvidenceValida
       <div id={panelId} hidden={!open}>
         {open ? (
           <>
-            <ul className="mt-1 grid gap-2">
+            <ul className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-2">
               {others.map((o) => (
                 <ObservationBox key={o.observation_id} observation={o} metric={validation.metric} />
               ))}
@@ -202,7 +204,7 @@ function CellBody({ validation, observations }: { validation: EvidenceValidation
     case 'divergent':
       return (
         <div>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))]">
             {observations.map((o) => (
               <ObservationBox key={o.observation_id} observation={o} metric={validation.metric} />
             ))}
@@ -212,7 +214,7 @@ function CellBody({ validation, observations }: { validation: EvidenceValidation
         </div>
       )
     case 'single_source': {
-      const o = observations[0]
+      const o = observations.find((x) => x.observation_id === validation.selected_observation_id) ?? observations[0]
       return (
         <div>
           <p className="font-serif text-tela font-semibold">
@@ -230,7 +232,7 @@ function CellBody({ validation, observations }: { validation: EvidenceValidation
       return (
         <div>
           {observations.length > 0 ? (
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))]">
               {observations.map((o) => (
                 <ObservationBox key={o.observation_id} observation={o} metric={validation.metric} />
               ))}
@@ -300,12 +302,12 @@ function MetricSection({
         {heading}
       </h3>
       {wide ? (
-        <table className="mt-2 w-full border-collapse rounded-painel border border-borda bg-superficie text-left">
+        <table className="mt-2 w-full table-fixed border-collapse rounded-painel border border-borda bg-superficie text-left">
           <caption className="sr-only">{heading}: valor, estado e fonte por ativo</caption>
           <thead>
             <tr className="border-b border-borda text-rotulo text-tinta-suave">
-              <th scope="col" className="p-3 font-medium">Ativo</th>
-              <th scope="col" className="p-3 font-medium">Estado</th>
+              <th scope="col" className="w-[17%] p-3 font-medium">Ativo</th>
+              <th scope="col" className="w-[24%] p-3 font-medium">Estado</th>
               <th scope="col" className="p-3 font-medium">Valor e fonte</th>
             </tr>
           </thead>
@@ -320,11 +322,11 @@ function MetricSection({
           </tbody>
         </table>
       ) : (
-        <ul className="mt-2 grid gap-3">
+        <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
           {rows.map(({ id, resolved }) => (
             <li
               key={id}
-              className="rounded-painel border border-borda bg-superficie p-3"
+              className="min-w-0 rounded-painel border border-borda bg-superficie p-3"
               data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}
             >
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -355,8 +357,8 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
   const headerId = useId()
 
   return (
-    <div className="mt-2">
-      <header aria-labelledby={headerId} className="rounded-painel border border-borda bg-superficie p-3">
+    <div className="mt-2 min-w-0 [overflow-wrap:anywhere]">
+      <header aria-labelledby={headerId} className="min-w-0 rounded-painel border border-borda bg-superficie p-3">
         <h2 id={headerId} className="text-rotulo font-semibold">Dados do lote</h2>
         <p className="text-rotulo">
           Coletado em{' '}
@@ -396,11 +398,11 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
           return (
             <section key={`limitation-${index}`} aria-label="Campos sem valor apresentável" className="mt-6">
               <h3 className="text-subtitulo">Campos sem valor apresentável</h3>
-              <ul className="mt-2 grid gap-3">
+              <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
                 {section.validation_ids.map((id) => {
                   const resolved = resolve(id, null)
                   return (
-                    <li key={id} className="rounded-painel border border-borda bg-superficie p-3" data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}>
+                    <li key={id} className="min-w-0 rounded-painel border border-borda bg-superficie p-3" data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}>
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <h4 className="font-semibold">
                           {resolved.ok ? `${resolved.validation.asset_id}, ${metricLabel(resolved.validation.metric)}` : 'Campo sem evidência'}
@@ -426,7 +428,7 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
       {payload.warnings.length > 0 ? (
         <section aria-label="Avisos" className="mt-6">
           <h3 className="text-subtitulo">Avisos</h3>
-          <ul className="mt-2 grid gap-2">
+          <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2">
             {payload.warnings.map((w, i) => (
               <li key={i} className="flex items-start gap-2 rounded-painel border border-ambar-alerta p-3">
                 <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ambar-alerta" />

@@ -256,3 +256,49 @@ test('a 768 px ou mais é uma tabela com cabeçalhos de coluna e de linha', () =
   expect(within(tables[1]).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Ativo', 'Estado', 'Valor e fonte'])
   expect(within(tables[1]).getByRole('rowheader', { name: 'DEMO3' })).toBeTruthy()
 })
+
+test('reflow: valor longo quebra em qualquer ponto e as caixas podem encolher (WCAG 1.4.10)', () => {
+  const long = '9'.repeat(45)
+  const raw = seedPayload()
+  const ev = raw.evidence as { observations: { observation_id: string; value_decimal: string }[]; validations: { comparison: { delta_abs: string; limit: string } | null }[] }
+  ev.observations.find((o) => o.observation_id === 'o3')!.value_decimal = long + '.5'
+  ev.observations.find((o) => o.observation_id === 'o1')!.value_decimal = long
+  ev.validations[1].comparison!.delta_abs = long
+  render(<MetricTable payload={payloadOf(raw)} />)
+  const root = screen.getByRole('banner').parentElement!
+  expect(root.className).toContain('[overflow-wrap:anywhere]')
+  expect(root.className).toContain('min-w-0')
+  const longValues = [...root.querySelectorAll('span')].filter((s) => /9\.999\.999\.999/.test(s.textContent ?? '') && s.children.length === 0)
+  expect(longValues.length).toBeGreaterThanOrEqual(3)
+  for (const el of longValues) expect(el.className, el.textContent ?? '').toContain('[overflow-wrap:anywhere]')
+  // Itens de lista/grade com valor precisam poder encolher.
+  const items = within(cell('DEMO3', 'dividend_yield')).getAllByRole('listitem')
+  expect(items.length).toBe(2)
+  for (const li of items) expect(li.className).toContain('min-w-0')
+  for (const ul of cell('DEMO3', 'dividend_yield').querySelectorAll('ul')) expect(ul.className).toMatch(/minmax\(0,1fr\)/)
+})
+
+test('single_source usa a observação selecionada; observação extra torna o campo incompleto', () => {
+  const raw = sevenStates()
+  const v = (raw.evidence as { validations: { validation_id: string; selected_observation_id: string | null; observation_ids: string[] }[] }).validations
+  v.find((x) => x.validation_id === 'v-single')!.selected_observation_id = 'o7'
+  render(<MetricTable payload={payloadOf(raw)} />)
+  expect(within(cell('ONEA3', 'price_to_book')).getByText('0,90')).toBeTruthy()
+  // Seleção fora das observações da validação: incompleto.
+  const raw2 = sevenStates()
+  const v2 = (raw2.evidence as { validations: { validation_id: string; selected_observation_id: string | null }[] }).validations
+  v2.find((x) => x.validation_id === 'v-single')!.selected_observation_id = 'o1'
+  render(<MetricTable payload={payloadOf(raw2)} />)
+  expect(screen.getByTestId('cell-v-single').textContent).toContain('Dado incompleto.')
+})
+
+test('single_source com mais de uma observação é dado incompleto, não escolhe a primeira', () => {
+  const raw = sevenStates()
+  const ev = raw.evidence as { validations: { validation_id: string; observation_ids: string[] }[]; observations: unknown[] }
+  ev.observations.push(obs('o9', 'ONEA3', 'price_to_book', '5.55', 'statusinvest'))
+  ev.validations.find((x) => x.validation_id === 'v-single')!.observation_ids = ['o7', 'o9']
+  render(<MetricTable payload={payloadOf(raw)} />)
+  const c = screen.getByTestId('cell-v-single')
+  expect(c.textContent).toContain('Dado incompleto.')
+  expect(c.textContent).not.toMatch(/0,90|5,55/)
+})

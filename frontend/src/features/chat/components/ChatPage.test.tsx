@@ -621,3 +621,36 @@ test('o catálogo é lido com o Bearer do usuário', async () => {
   expect(catalogCalls[0].method).toBe('GET')
   expect(catalogCalls[0].headers.Authorization).toBe('Bearer token-u1')
 })
+
+test('cancelar o seletor depois de needs_selection e reenviar o mesmo texto usa request_id NOVO', async () => {
+  await open()
+  agentHandler = () => json(200, { status: 'needs_selection', reason: { code: 'LLM_DISABLED' } })
+  type('mesma pergunta')
+  clickSend()
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Cancelar' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  clickSend()
+  await waitFor(() => expect(agentCalls).toHaveLength(2))
+  expect(agentCalls[1].body?.request_id).not.toBe(agentCalls[0].body?.request_id)
+})
+
+test('o mesmo texto em outra conversa não reutiliza o request_id', async () => {
+  const other = fake.addConversation('Outra conversa').id as string
+  await open()
+  agentHandler = (_c, n) => (n === 1 ? json(500, { error: { code: 'INTERNAL_ERROR' } }) : completed())
+  type('mesma pergunta')
+  clickSend()
+  await screen.findByText('Erro no servidor')
+  fireEvent.click(screen.getAllByRole('link', { name: 'Conversas' })[0])
+  fireEvent.click(await screen.findByRole('link', { name: 'Outra conversa' }))
+  await screen.findByLabelText('Sua pergunta')
+  // A tela remontou: nada de rascunho nem erro da conversa anterior.
+  expect((screen.getByLabelText('Sua pergunta') as HTMLTextAreaElement).value).toBe('')
+  expect(screen.queryByText('Erro no servidor')).toBeNull()
+  type('mesma pergunta')
+  clickSend()
+  await screen.findByText('Resposta recebida.')
+  expect(agentCalls[1].body?.conversation_id).toBe(other)
+  expect(agentCalls[1].body?.request_id).not.toBe(agentCalls[0].body?.request_id)
+})

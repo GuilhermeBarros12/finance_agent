@@ -104,7 +104,8 @@ export function useAgentSend(userId: string, conversationId: string, onCompleted
       if (busy.current) return null
       busy.current = true
       const signal = abort.current.signal
-      const key = JSON.stringify([request.message, request.selection])
+      // A chave inclui a conversa: o mesmo texto em outra conversa é outro pedido.
+      const key = JSON.stringify([conversationId, request.message, request.selection])
       if (!idRef.current || idRef.current.key !== key) idRef.current = { key, id: newRequestId() }
       const requestId = idRef.current.id
       setState({ kind: 'sending' })
