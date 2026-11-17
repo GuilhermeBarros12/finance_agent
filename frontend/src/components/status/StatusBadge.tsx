@@ -8,7 +8,7 @@ function Badge({ visual, prefix }: { visual: Visual; prefix: string }) {
     <span
       role="img"
       aria-label={`${prefix}: ${label}`}
-      className={cn('inline-flex items-center gap-1 rounded-selo px-2 py-0.5 text-nota font-medium', className)}
+      className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-selo px-2 py-0.5 text-nota font-medium', className)}
     >
       <Icon aria-hidden="true" className="size-4" />
       <span aria-hidden="true">{label}</span>
