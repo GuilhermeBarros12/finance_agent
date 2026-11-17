@@ -1,8 +1,14 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { fake } from '@/test/fakeSupabase'
+import { ThemeProvider } from '@/components/layout/ThemeProvider'
+import { SessionProvider } from '@/features/auth/hooks/SessionProvider'
+import { AppRoutes } from '@/routes/AppRoutes'
 import { renderApp } from '@/test/renderApp'
 import { chatConfig } from '../api'
+import { useAgentSend } from '../hooks'
 import { catalogBody, seedPayload } from '../fixtures'
 
 vi.mock('@/lib/supabase', async () => ({ supabase: (await import('@/test/fakeSupabase')).fake.client }))
@@ -635,16 +641,34 @@ test('cancelar o seletor depois de needs_selection e reenviar o mesmo texto usa 
   expect(agentCalls[1].body?.request_id).not.toBe(agentCalls[0].body?.request_id)
 })
 
-test('o mesmo texto em outra conversa não reutiliza o request_id', async () => {
+function Jump({ to }: { to: string }) {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate(to)}>ir direto</button>
+}
+
+// Navega de /conversas/A para /conversas/B SEM passar pela lista (a mesma rota, outro :id).
+test('o mesmo texto em outra conversa (navegação direta A para B) não reutiliza o request_id nem herda a tela', async () => {
   const other = fake.addConversation('Outra conversa').id as string
-  await open()
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <SessionProvider>
+          <MemoryRouter initialEntries={[`/conversas/${conversationId}`]}>
+            <AppRoutes />
+            <Jump to={`/conversas/${other}`} />
+          </MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+  await screen.findByLabelText('Sua pergunta')
   agentHandler = (_c, n) => (n === 1 ? json(500, { error: { code: 'INTERNAL_ERROR' } }) : completed())
   type('mesma pergunta')
   clickSend()
   await screen.findByText('Erro no servidor')
-  fireEvent.click(screen.getAllByRole('link', { name: 'Conversas' })[0])
-  fireEvent.click(await screen.findByRole('link', { name: 'Outra conversa' }))
-  await screen.findByLabelText('Sua pergunta')
+  fireEvent.click(screen.getByRole('button', { name: 'ir direto' }))
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Outra conversa'))
   // A tela remontou: nada de rascunho nem erro da conversa anterior.
   expect((screen.getByLabelText('Sua pergunta') as HTMLTextAreaElement).value).toBe('')
   expect(screen.queryByText('Erro no servidor')).toBeNull()
@@ -653,4 +677,20 @@ test('o mesmo texto em outra conversa não reutiliza o request_id', async () => 
   await screen.findByText('Resposta recebida.')
   expect(agentCalls[1].body?.conversation_id).toBe(other)
   expect(agentCalls[1].body?.request_id).not.toBe(agentCalls[0].body?.request_id)
+})
+
+// A chave do request_id também inclui a conversa por si só (sem depender do remontar da tela).
+test('useAgentSend: o mesmo pedido em outra conversa recebe request_id novo, na mesma instância do hook', async () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  const { result, rerender } = renderHook(({ cid }) => useAgentSend('u1', cid, () => {}), { wrapper, initialProps: { cid: 'conv-A' } })
+  agentHandler = () => json(500, { error: { code: 'INTERNAL_ERROR' } })
+  const request = { message: 'mesma pergunta', selection: null }
+  await act(async () => void (await result.current.send(request)))
+  await act(async () => void (await result.current.send(request))) // mesma conversa: reutiliza
+  expect(agentCalls[1].body?.request_id).toBe(agentCalls[0].body?.request_id)
+  rerender({ cid: 'conv-B' })
+  await act(async () => void (await result.current.send(request)))
+  expect(agentCalls[2].body?.conversation_id).toBe('conv-B')
+  expect(agentCalls[2].body?.request_id).not.toBe(agentCalls[0].body?.request_id)
 })

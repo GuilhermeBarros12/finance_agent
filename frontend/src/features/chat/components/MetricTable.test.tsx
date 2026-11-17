@@ -128,7 +128,7 @@ test('incomparable: os valores e o motivo do servidor', () => {
   expect(within(c).getByText('12,0')).toBeTruthy()
   expect(within(c).getByText('9,8')).toBeTruthy()
   expect(within(c).getByText('Datas-base diferentes entre as fontes')).toBeTruthy()
-  expect(within(c).getByText(/Data-base 30\/06\/2026/)).toBeTruthy()
+  expect(c.textContent).toContain('Data-base 30/06/2026')
 })
 
 test('missing mostra "Não disponível", nunca zero', () => {
@@ -257,7 +257,7 @@ test('a 768 px ou mais é uma tabela com cabeçalhos de coluna e de linha', () =
   expect(within(tables[1]).getByRole('rowheader', { name: 'DEMO3' })).toBeTruthy()
 })
 
-test('reflow: valor longo quebra em qualquer ponto e as caixas podem encolher (WCAG 1.4.10)', () => {
+test('reflow: valor longo quebra em qualquer ponto; as caixas podem encolher (WCAG 1.4.10)', () => {
   const long = '9'.repeat(45)
   const raw = seedPayload()
   const ev = raw.evidence as { observations: { observation_id: string; value_decimal: string }[]; validations: { comparison: { delta_abs: string; limit: string } | null }[] }
@@ -266,16 +266,48 @@ test('reflow: valor longo quebra em qualquer ponto e as caixas podem encolher (W
   ev.validations[1].comparison!.delta_abs = long
   render(<MetricTable payload={payloadOf(raw)} />)
   const root = screen.getByRole('banner').parentElement!
-  expect(root.className).toContain('[overflow-wrap:anywhere]')
-  expect(root.className).toContain('min-w-0')
   const longValues = [...root.querySelectorAll('span')].filter((s) => /9\.999\.999\.999/.test(s.textContent ?? '') && s.children.length === 0)
   expect(longValues.length).toBeGreaterThanOrEqual(3)
-  for (const el of longValues) expect(el.className, el.textContent ?? '').toContain('[overflow-wrap:anywhere]')
+  for (const el of longValues) {
+    expect(el.className, el.textContent ?? '').toContain('[overflow-wrap:anywhere]')
+    expect(el.className).not.toContain('whitespace-nowrap')
+  }
   // Itens de lista/grade com valor precisam poder encolher.
   const items = within(cell('DEMO3', 'dividend_yield')).getAllByRole('listitem')
   expect(items.length).toBe(2)
   for (const li of items) expect(li.className).toContain('min-w-0')
   for (const ul of cell('DEMO3', 'dividend_yield').querySelectorAll('ul')) expect(ul.className).toMatch(/minmax\(0,1fr\)/)
+})
+
+test('legibilidade: valores curtos, tickers, selos e fontes não quebram; anywhere só em texto que pode ser longo', () => {
+  render(<MetricTable payload={payloadOf(sevenStates())} />)
+  const root = screen.getByRole('banner').parentElement!
+  // A raiz não herda "anywhere" (isso encolheria a largura mínima de toda palavra).
+  expect(root.className).toContain('[overflow-wrap:break-word]')
+  expect(root.className).not.toContain('anywhere')
+  fireEvent.click(within(cell('DEMO3', 'price_to_book')).getByRole('button', { name: 'Ver as outras fontes' }))
+  const nowrap = (el: Element | null, what: string) => expect(el?.className, what).toContain('whitespace-nowrap')
+  for (const text of ['8,50%', '9,10%', '0,60 p.p.', '0,20 p.p.', '1,50', '0,0302', '12,0', '9,8']) {
+    const found = screen.getAllByText(text).filter((e) => e.tagName === 'SPAN')
+    expect(found.length, text).toBeGreaterThan(0)
+    for (const el of found) nowrap(el, text)
+  }
+  for (const el of screen.getAllByText('DEMO3')) nowrap(el, 'ticker')
+  for (const el of screen.getAllByText('18/09/2026')) nowrap(el, 'data-base')
+  for (const el of screen.getAllByText(/^18\/09\/2026, 17:0[12]$/)) nowrap(el, 'data da coleta')
+  for (const el of screen.getAllByText('Fundamentus')) nowrap(el.closest('span.whitespace-nowrap') ?? el, 'fonte')
+  for (const el of screen.getAllByText('StatusInvest')) nowrap(el, 'fonte')
+  for (const badge of screen.getAllByRole('img')) nowrap(badge, badge.getAttribute('aria-label') ?? '')
+  // Só os motivos (texto livre do servidor) podem quebrar em qualquer ponto.
+  const anywhere = [...root.querySelectorAll('[class*="overflow-wrap:anywhere"]')]
+  expect(anywhere.length).toBeGreaterThan(0)
+  for (const el of anywhere) expect(el.textContent).toMatch(/^Motivo: /)
+  // O rótulo e o valor de diferença/limite empilham em tela estreita.
+  const dl = cell('DEMO3', 'price_to_book').querySelector('dl')!
+  expect(dl.className).toContain('grid-cols-1')
+  expect(dl.className).toContain('min-[480px]:grid-cols-')
+  // Sem larguras fixas pequenas nas colunas da tabela.
+  expect(root.innerHTML).not.toMatch(/table-fixed|w-\[17%\]|w-\[24%\]/)
 })
 
 test('single_source usa a observação selecionada; observação extra torna o campo incompleto', () => {

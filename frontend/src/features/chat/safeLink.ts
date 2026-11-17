@@ -24,6 +24,8 @@ const SOURCE_NAME: Record<string, string> = {
   brapi: 'brapi',
 }
 
+export const isKnownSource = (sourceId: string) => sourceId in SOURCE_NAME
+
 // Nome para exibir. Código desconhecido aparece como veio (será renderizado como texto).
 export function sourceName(sourceId: string): string {
   return SOURCE_NAME[sourceId] ?? sourceId

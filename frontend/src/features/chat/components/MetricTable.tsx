@@ -11,7 +11,7 @@ import {
   type EvidenceValidation,
 } from '../contracts'
 import { formatDateTime, formatReference } from '../dates'
-import { safeSourceUrl, sourceName } from '../safeLink'
+import { isKnownSource, safeSourceUrl, sourceName } from '../safeLink'
 import { warningText } from '../texts'
 import { deltaUnit, unitFor } from '../units'
 import { Value } from './Value'
@@ -80,8 +80,19 @@ function IncompleteCell() {
   )
 }
 
+// Ticker no formato do contrato não quebra ("DEMO3" nunca vira "DEMO / 3"); texto fora do
+// formato (dado estranho) pode quebrar em qualquer ponto.
+function Ticker({ id }: { id: string }) {
+  return <span className={/^[A-Z0-9]{1,12}$/.test(id) ? 'whitespace-nowrap' : '[overflow-wrap:anywhere]'}>{id}</span>
+}
+
+// Nome de fonte conhecido não quebra; um código estranho (texto do servidor) pode quebrar em qualquer ponto.
+function SourceName({ id }: { id: string }) {
+  return <span className={isKnownSource(id) ? 'whitespace-nowrap' : '[overflow-wrap:anywhere]'}>{sourceName(id)}</span>
+}
+
 function SourceLink({ observation }: { observation: EvidenceObservation }) {
-  const name = sourceName(observation.source_id)
+  const name = <SourceName id={observation.source_id} />
   const href = safeSourceUrl(observation.source_url)
   if (!href) {
     return (
@@ -110,8 +121,14 @@ function ObservationMeta({ observation }: { observation: EvidenceObservation }) 
       <div>
         Fonte: <SourceLink observation={observation} />
       </div>
-      <div>Coletado em {formatDateTime(observation.collected_at)}</div>
-      {observation.reference_at ? <div>Data-base {formatReference(observation.reference_at)}</div> : null}
+      <div>
+        Coletado em <span className="whitespace-nowrap">{formatDateTime(observation.collected_at)}</span>
+      </div>
+      {observation.reference_at ? (
+        <div>
+          Data-base <span className="whitespace-nowrap">{formatReference(observation.reference_at)}</span>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -120,7 +137,7 @@ function ObservationMeta({ observation }: { observation: EvidenceObservation }) 
 function ObservationBox({ observation, metric }: { observation: EvidenceObservation; metric: string }) {
   return (
     <li className="min-w-0 rounded-selo border border-borda p-3">
-      <p className="text-nota font-medium">{sourceName(observation.source_id)}</p>
+      <p className="text-nota font-medium"><SourceName id={observation.source_id} /></p>
       <p className="font-serif text-subtitulo font-semibold">
         <Value value={observation.value_decimal} unit={unitFor(observation.unit, metric)} />
       </p>
@@ -134,7 +151,7 @@ function ComparisonFigures({ validation, observations }: { validation: EvidenceV
   if (!c) return null
   const unit = deltaUnit(unitFor(observations[0]?.unit ?? '', validation.metric))
   return (
-    <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 text-rotulo">
+    <dl className="mt-2 grid grid-cols-1 gap-x-3 min-[480px]:grid-cols-[auto_minmax(0,1fr)] text-rotulo">
       <dt className="text-tinta-suave">Diferença entre as fontes</dt>
       <dd className="min-w-0">
         <Value value={c.delta_abs} unit={unit} />
@@ -149,7 +166,7 @@ function ComparisonFigures({ validation, observations }: { validation: EvidenceV
 
 function Reason({ text }: { text: string | null }) {
   return (
-    <p className="text-rotulo">
+    <p className="text-rotulo [overflow-wrap:anywhere]">
       <span className="text-tinta-suave">Motivo: </span>
       {text && text.length > 0 ? text : 'não informado'}
     </p>
@@ -214,7 +231,8 @@ function CellBody({ validation, observations }: { validation: EvidenceValidation
         </div>
       )
     case 'single_source': {
-      const o = observations.find((x) => x.observation_id === validation.selected_observation_id) ?? observations[0]
+      // O resolvedor garante exatamente uma observação (e que a selecionada, se houver, é ela).
+      const o = observations[0]
       return (
         <div>
           <p className="font-serif text-tela font-semibold">
@@ -295,19 +313,19 @@ function MetricSection({
 }) {
   const headingId = useId()
   const rows = validationIds.map((id) => ({ id, resolved: resolve(id, metric) }))
-  const label = (r: Resolved, id: string) => (r.ok ? r.validation.asset_id : `Campo ${id.slice(0, 8)}`)
+  const label = (r: Resolved, id: string) => (r.ok ? <Ticker id={r.validation.asset_id} /> : `Campo ${id.slice(0, 8)}`)
   return (
     <section aria-labelledby={headingId} className="mt-6">
       <h3 id={headingId} className="text-subtitulo">
         {heading}
       </h3>
       {wide ? (
-        <table className="mt-2 w-full table-fixed border-collapse rounded-painel border border-borda bg-superficie text-left">
+        <table className="mt-2 w-full border-collapse rounded-painel border border-borda bg-superficie text-left">
           <caption className="sr-only">{heading}: valor, estado e fonte por ativo</caption>
           <thead>
             <tr className="border-b border-borda text-rotulo text-tinta-suave">
-              <th scope="col" className="w-[17%] p-3 font-medium">Ativo</th>
-              <th scope="col" className="w-[24%] p-3 font-medium">Estado</th>
+              <th scope="col" className="p-3 font-medium">Ativo</th>
+              <th scope="col" className="p-3 font-medium">Estado</th>
               <th scope="col" className="p-3 font-medium">Valor e fonte</th>
             </tr>
           </thead>
@@ -357,12 +375,12 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
   const headerId = useId()
 
   return (
-    <div className="mt-2 min-w-0 [overflow-wrap:anywhere]">
+    <div className="mt-2 min-w-0 [overflow-wrap:break-word]">
       <header aria-labelledby={headerId} className="min-w-0 rounded-painel border border-borda bg-superficie p-3">
         <h2 id={headerId} className="text-rotulo font-semibold">Dados do lote</h2>
         <p className="text-rotulo">
           Coletado em{' '}
-          {collected === 'data inválida' ? collected : <time dateTime={payload.snapshot_collected_at}>{collected}</time>}
+          {collected === 'data inválida' ? collected : <time dateTime={payload.snapshot_collected_at} className="whitespace-nowrap">{collected}</time>}
         </p>
         <p className="text-rotulo">
           {assets_updated} de {assets_total} ativos atualizados
@@ -405,7 +423,13 @@ export function MetricTable({ payload, catalog }: { payload: AnswerPayload; cata
                     <li key={id} className="min-w-0 rounded-painel border border-borda bg-superficie p-3" data-testid={resolved.ok ? `cell-${resolved.validation.asset_id}-${resolved.validation.metric}` : `cell-${id}`}>
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <h4 className="font-semibold">
-                          {resolved.ok ? `${resolved.validation.asset_id}, ${metricLabel(resolved.validation.metric)}` : 'Campo sem evidência'}
+                          {resolved.ok ? (
+                            <>
+                              <Ticker id={resolved.validation.asset_id} />, {metricLabel(resolved.validation.metric)}
+                            </>
+                          ) : (
+                            'Campo sem evidência'
+                          )}
                         </h4>
                         {resolved.ok ? <Badges validation={resolved.validation} /> : null}
                       </div>
