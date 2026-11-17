@@ -92,6 +92,24 @@ Padrões novos, usados em `frontend/src/features/chat/`:
 - **Links de fonte**: só `https` em domínio conhecido, abrem em nova aba com `rel="noopener noreferrer"` e texto "(abre em nova aba)" para leitor de tela.
 - **Seletor manual**: diálogo com `fieldset`/`legend` por grupo, caixas de 44 px de altura (o `label` inteiro é o alvo), foco preso, Esc fecha.
 
+## Dados, exportação e aviso legal (T21e)
+
+Padrões novos, usados em `frontend/src/features/data-status/` e `features/legal/`:
+
+- **Selo de permissão de coleta** (`PermissionBadge`): mesmo formato do selo de estado, para o estado registrado de cada fonte. Os textos e os estados vêm de `features/data-status/sources.ts` (texto fixo do front; um teste confere com `config/sources.yaml`).
+
+| Estado | Significado | Texto do selo | Ícone | Cor | Borda |
+| --- | --- | --- | --- | --- | --- |
+| `permitida` | licença de uso explícita | Permitida | escudo com visto | Verde-conferido | sólida |
+| `indefinida` | permissão não comprovada; fonte habilitada por decisão e risco do autor | Indefinida | escudo com interrogação | Âmbar-alerta | tracejada, espessa (2 px) |
+| `proibida` | vedação explícita | Proibida | escudo cortado | Carmim | sólida, espessa (2 px) |
+
+- **Estado dos dados**: tudo vem pronto do catálogo. Selo de atualização, "X de Y ativos atualizados", sete linhas de contagem (selo de validação e número, como o servidor informou; chave nova vira "Estado não reconhecido: chave"; chave ausente vira "não informado", nunca zero) e lista de falhas (ticker, fonte, motivo como texto). Sem lote publicado: "Ainda não há dados coletados", com ícone, sem zeros.
+- **Idade do lote**: linha com ícone e texto ("Idade do lote: há 3 dias"), calculada só de `collected_at` e de um relógio injetável (tempo corrido). O estado de atualização segue vindo do servidor, em dias úteis; um texto de ajuda explica a diferença. Data de coleta no futuro ou ilegível aparece em âmbar com ícone de alerta ("data de coleta no futuro", "idade indisponível").
+- **Exportação**: botão com `aria-disabled` durante a leitura (continua focável), região `aria-live="polite"` com progresso, resultado ou erro (ícone e texto) e "Tentar de novo". Todas as partes ou nada.
+- **Rodapé em todas as telas** (`LegalFooter`): frase "As respostas deste sistema não são recomendação de investimento." e o link "Aviso legal" (44 px de altura). Dentro do `AppLayout` fica acima da barra inferior; fora dele (`ScreenFrame`: entrar, verificação de sessão e de acesso, aviso legal) fica no fim da página.
+- **Colunas de grade**: a coluna de conteúdo do `AppLayout` é `minmax(0,1fr)`; com `1fr` o conteúdo mais largo (palavra longa sem espaço) alargava a página em 768 a ~800 px.
+
 ## Estados de tela
 
 Carregando, vazio e erro são componentes compartilhados (`frontend/src/components/state/`):

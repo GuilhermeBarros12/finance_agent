@@ -15,10 +15,17 @@ export interface FakeSession {
 
 const BASE = Date.UTC(2026, 10, 16, 12, 0, 0)
 
+// Mesma comparação para ordenar e para o cursor (`gt`): número com número, senão texto.
+function compare(x: unknown, y: unknown): number {
+  if (typeof x === 'number' && typeof y === 'number') return x === y ? 0 : x < y ? -1 : 1
+  const [a, b] = [String(x), String(y)]
+  return a === b ? 0 : a < b ? -1 : 1
+}
+
 export function createFake() {
   const state = {
     session: null as FakeSession | null,
-    tables: { conversations: [] as Row[], allowed_users: [] as Row[], messages: [] as Row[] } as Record<string, Row[]>,
+    tables: { conversations: [] as Row[], allowed_users: [] as Row[], messages: [] as Row[], portfolio_items: [] as Row[] } as Record<string, Row[]>,
     errors: {} as Record<string, string | undefined>,
     gate: null as Promise<void> | null, // segura as escritas
     readGate: null as Promise<void> | null, // segura as leituras de conversations
@@ -37,6 +44,8 @@ export function createFake() {
     private filters: [string, unknown][] = []
     private orders: [string, boolean][] = []
     private lts: [string, number][] = []
+    private gts: [string, unknown][] = []
+    private columns: string[] | null = null
     private max: number | null = null
     private returning = false
     private mode: 'many' | 'maybe' = 'many'
@@ -45,8 +54,10 @@ export function createFake() {
       this.table = table
     }
 
-    select() {
+    select(columns?: string) {
       if (this.op !== 'select') this.returning = true
+      // Como o PostgREST: só as colunas pedidas voltam (user_id não vem se não for pedido).
+      else if (columns && columns.trim() !== '*') this.columns = columns.split(',').map((c) => c.trim())
       return this
     }
     insert(row: Row) {
@@ -69,6 +80,10 @@ export function createFake() {
     }
     lt(column: string, value: number) {
       this.lts.push([column, value])
+      return this
+    }
+    gt(column: string, value: unknown) {
+      this.gts.push([column, value])
       return this
     }
     limit(n: number) {
@@ -98,8 +113,8 @@ export function createFake() {
       const rows = state.tables[this.table] ?? []
       // is_allowed_user() nas políticas de conversations: revogado não vê nem escreve nada.
       const allowed = state.tables.allowed_users.some((r) => r.user_id === uid && r.enabled === true)
-      const denied = (this.table === 'conversations' || this.table === 'messages') && !allowed
-      const visible = (r: Row) => !denied && r.user_id === uid && this.filters.every(([c, v]) => r[c] === v) && this.lts.every(([c, v]) => (r[c] as number) < v)
+      const denied = (this.table === 'conversations' || this.table === 'messages' || this.table === 'portfolio_items') && !allowed
+      const visible = (r: Row) => !denied && r.user_id === uid && this.filters.every(([c, v]) => r[c] === v) && this.lts.every(([c, v]) => (r[c] as number) < v) && this.gts.every(([c, v]) => compare(r[c], v) > 0)
 
       if (this.op === 'insert') {
         if (denied || this.payload.user_id !== uid) {
@@ -122,12 +137,12 @@ export function createFake() {
       let out = rows.filter(visible).map((r) => ({ ...r }))
       for (const [column, asc] of [...this.orders].reverse()) {
         out = out.sort((a, b) => {
-          const [x, y] = [a[column], b[column]]
-          const less = typeof x === 'number' && typeof y === 'number' ? x < y : String(x) < String(y)
-          return (less ? -1 : 1) * (asc ? 1 : -1)
+          return compare(a[column], b[column]) * (asc ? 1 : -1)
         })
       }
       if (this.max !== null) out = out.slice(0, this.max)
+      const columns = this.columns
+      if (columns) out = out.map((r) => Object.fromEntries(columns.map((c) => [c, r[c]])))
       return { data: this.mode === 'maybe' ? (out[0] ?? null) : out, error: null }
     }
   }
@@ -176,13 +191,18 @@ export function createFake() {
       state.tables.messages.push(message)
       return message
     },
+    addPortfolioItem(assetId: string, userId = 'u1') {
+      const row = { id: `p-${++state.seq}`, user_id: userId, asset_id: assetId, created_at: tick() }
+      state.tables.portfolio_items.push(row)
+      return row
+    },
     touch(id: string) {
       const row = state.tables.conversations.find((r) => r.id === id)
       if (row) row.updated_at = tick()
     },
     reset() {
       state.session = null
-      state.tables = { conversations: [], allowed_users: [], messages: [] }
+      state.tables = { conversations: [], allowed_users: [], messages: [], portfolio_items: [] }
       state.errors = {}
       state.gate = null
       state.readGate = null
