@@ -40,7 +40,7 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
 | T21a | Fundação do front e guia de design | T05 | concluída | [#12](https://github.com/GuilhermeBarros12/finance_agent/pull/12) |
 | T21b | Login e conversas | T21a, T08 | concluída | [#23](https://github.com/GuilhermeBarros12/finance_agent/pull/23) |
-| T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | em revisão | |
+| T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | concluída | [#25](https://github.com/GuilhermeBarros12/finance_agent/pull/25) |
 | T21d | Carteira | T21c | pendente | |
 | T21e | Estado dos dados, exportação e aviso legal | T21c | pendente | |
 | T21f | Testes ponta a ponta e capturas de tela | T19, T21d, T21e | pendente | |
