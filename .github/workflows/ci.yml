@@ -169,9 +169,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
-        with:
-          version: latest
       - name: Subir o banco local e aplicar migrations
         run: supabase db start
       - name: Testes pgTAP
@@ -227,29 +224,36 @@ jobs:
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
-      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
-        with:
-          version: latest
       - name: Instalar dependências da raiz e do frontend
         run: |
           npm ci
           npm ci --prefix frontend
       - name: Instalar o Chromium do Playwright
         run: npx playwright install --with-deps chromium
-      # Sobe o Supabase local completo (banco, Auth, API); o primeiro start aplica as
-      # migrations e o seed.sql. As funções não usam `supabase functions serve`: os testes
-      # sobem o gateway local em Deno (tests/e2e/support/functions-gateway.ts) com os
-      # handlers reais e MOCK_LLM=true. Nenhum segredo: as chaves locais são lidas do
-      # `supabase status` pelos próprios testes, em tempo de execução.
-      - name: Subir o Supabase local
-        run: supabase start
+      # Sobe só o que o teste usa: banco, Auth (gotrue), API REST (postgrest) e o gateway
+      # Kong (54321). O primeiro start aplica as migrations e o seed.sql. Os demais
+      # containers ficam de fora: a caixa de e-mail (mailpit, porta 54324) já falhou por
+      # porta ocupada no runner e derrubou o `supabase start` completo. É a CLI da raiz
+      # (npx, versão travada no package-lock), a mesma que o teste usa em `supabase status`.
+      # As funções não usam `supabase functions serve`: os testes sobem o gateway local em
+      # Deno (tests/e2e/support/functions-gateway.ts) com os handlers reais e MOCK_LLM=true.
+      # Nenhum segredo: as chaves locais são lidas do status pelos próprios testes.
+      - name: Subir o Supabase local (só banco, Auth, REST e Kong)
+        run: >
+          npx supabase start -x
+          realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Diagnóstico do ambiente
+        if: always()
+        run: |
+          docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}'
+          npx supabase status -o env | grep -E '^API_URL='
       - name: Testes ponta a ponta
         env:
           CI: "true"
         run: npm run e2e
       - name: Parar o Supabase local
         if: always()
-        run: supabase stop --no-backup
+        run: npx supabase stop --no-backup
 
   ci-ok:
     # Único check a exigir na proteção da branch: falha se qualquer job acima falhar.
