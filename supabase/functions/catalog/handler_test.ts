@@ -123,11 +123,13 @@ Deno.test("200 com snapshot: contrato completo, status_counts conferido", async 
   // ordenado por asset_id, mesmo com a fonte devolvendo fora de ordem
   assertEquals(b.assets, [
     {
+      id: "a0000000-0000-4000-8000-000000000001",
       asset_id: "DEMO3",
       name: "Demo S.A. (fictícia)",
       reference_url: "https://statusinvest.com.br/acoes/demo3",
     },
     {
+      id: "a0000000-0000-4000-8000-000000000002",
       asset_id: "TEST4",
       name: "Teste S.A. (fictícia)",
       reference_url: "https://statusinvest.com.br/acoes/test4",
@@ -374,4 +376,57 @@ Deno.test("falha do Auth (503) não vira 401 nem 200", async () => {
   };
   const res = await handleCatalogRequest(get(JWT_ANA), h.deps);
   assertEquals(res.status, 500);
+});
+
+Deno.test("cada ativo traz o uuid de assets.id; ordem por símbolo e demais campos intactos", async () => {
+  const h = makeDeps();
+  const res = await handleCatalogRequest(get(JWT_ANA), h.deps);
+  assertEquals(res.status, 200);
+  const b = await body(res);
+  assertEquals(
+    b.assets.map((a: { asset_id: string }) => a.asset_id),
+    ["DEMO3", "TEST4"],
+  );
+  assertEquals(b.assets[0].id, "a0000000-0000-4000-8000-000000000001");
+  assertEquals(b.assets[1].id, "a0000000-0000-4000-8000-000000000002");
+  for (const a of b.assets) {
+    assert(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        a.id,
+      ),
+    );
+    assertEquals(Object.keys(a).sort(), [
+      "asset_id",
+      "id",
+      "name",
+      "reference_url",
+    ]);
+  }
+});
+
+Deno.test("sem snapshot continua 200 e os ativos continuam com id", async () => {
+  const h = makeDeps({
+    store: new FakeCatalogStore(ASSETS, "https://statusinvest.com.br", null),
+  });
+  const res = await handleCatalogRequest(get(JWT_ANA), h.deps);
+  assertEquals(res.status, 200);
+  const b = await body(res);
+  assertEquals(b.snapshot, null);
+  assertEquals(b.assets.length, 2);
+  assert(b.assets.every((a: { id: string }) => typeof a.id === "string"));
+});
+
+Deno.test("id malformado ou ausente vira 500 estruturado, nunca valor inventado", async () => {
+  for (const bad of ["DEMO3", "", "a0000000-0000-4000-8000", undefined, null]) {
+    const store = new FakeCatalogStore([
+      // deno-lint-ignore no-explicit-any
+      { ...ASSETS[1], id: bad as any },
+    ]);
+    const h = makeDeps({ store });
+    const res = await handleCatalogRequest(get(JWT_ANA), h.deps);
+    assertEquals(res.status, 500);
+    const b = await body(res);
+    assertEquals(b.error.code, "INTERNAL_ERROR");
+    assertEquals(b.assets, undefined);
+  }
 });

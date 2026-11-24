@@ -40,7 +40,7 @@ export class SupabaseCatalogStore implements CatalogStore {
   async listAssets(): Promise<CatalogAssetRow[]> {
     const { data, error } = await this.db
       .from("assets")
-      .select("symbol,asset_class,name")
+      .select("id,symbol,asset_class,name")
       .eq("asset_class", "stock")
       .order("symbol", { ascending: true });
     if (error) throw new Error(`assets: ${error.code ?? "erro"}`);
