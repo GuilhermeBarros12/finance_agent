@@ -79,4 +79,5 @@ Bloqueios que dependem só do autor e já eram conhecidos antes da execução es
   - **Opção C:** função SQL `security invoker` ou RPC que devolva `portfolio_items` com o símbolo, mais o catálogo com uuid. Mais trabalho que a A.
 - **Decisões de desenho já tomadas, para quando destravar:** o backend limita a `selection` a 20 ativos (`MAX_ASSETS = 20` em `supabase/functions/agent/request.ts`), então impedir adicionar além de 20, com aviso visível; reaproveitar `postAgent` e `errorView` da T21c e o `ConfirmDialog` da T21b; `createConversation` passa a devolver o id da conversa; se o envio falhar depois de criar a conversa, a conversa fica e o usuário reenvia de dentro dela.
 - **Bloqueia:** a T21f (depende da T21d). A T21e não depende dela e segue.
+- **Liberada em 2026-11-24:** o autor aprovou a opção A. A tarefa voltou a `em andamento` e deve ser retomada no branch `tarefa/T21d`, trazendo `fatia-acoes` para dentro dele. A mudança inclui a parte de backend da opção A: `supabase/functions/catalog/` e `docs/api.md` (o catálogo devolve também `assets[].id`); o restante é o front da T21d.
 
