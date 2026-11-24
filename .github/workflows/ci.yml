@@ -28,6 +28,7 @@ jobs:
       frontend: ${{ steps.d.outputs.frontend }}
       functions: ${{ steps.d.outputs.functions }}
       database: ${{ steps.d.outputs.database }}
+      e2e: ${{ steps.d.outputs.e2e }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +41,7 @@ jobs:
             echo "schemas=$(has scripts/export_schemas.py)"
             echo "frontend=$(has frontend/package.json)"
             echo "functions=$(has supabase/functions/deno.json)"
+            echo "e2e=$(has playwright.config.ts)"
             if ls supabase/migrations/*.sql >/dev/null 2>&1; then
               echo "database=true"
             else
@@ -209,10 +211,50 @@ jobs:
             exit 1
           fi
 
+  e2e:
+    name: Ponta a ponta (Playwright)
+    needs: detect
+    if: needs.detect.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: latest
+      - name: Instalar dependências da raiz e do frontend
+        run: |
+          npm ci
+          npm ci --prefix frontend
+      - name: Instalar o Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+      # Sobe o Supabase local completo (banco, Auth, API); o primeiro start aplica as
+      # migrations e o seed.sql. As funções não usam `supabase functions serve`: os testes
+      # sobem o gateway local em Deno (tests/e2e/support/functions-gateway.ts) com os
+      # handlers reais e MOCK_LLM=true. Nenhum segredo: as chaves locais são lidas do
+      # `supabase status` pelos próprios testes, em tempo de execução.
+      - name: Subir o Supabase local
+        run: supabase start
+      - name: Testes ponta a ponta
+        env:
+          CI: "true"
+        run: npm run e2e
+      - name: Parar o Supabase local
+        if: always()
+        run: supabase stop --no-backup
+
   ci-ok:
     # Único check a exigir na proteção da branch: falha se qualquer job acima falhar.
     name: CI ok
-    needs: [detect, guardrails, python, frontend, functions, database]
+    needs: [detect, guardrails, python, frontend, functions, database, e2e]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
