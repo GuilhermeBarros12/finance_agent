@@ -66,3 +66,17 @@ POST /agent sem selection
 - O LLM só devolve intenção, tickers do universo e métricas do enum. Não escreve texto para o usuário, não vê valores, snapshot, carteira, conversa nem identificadores do usuário, e nunca escolhe lado em divergência. Os números vêm do banco, como na T18.
 - O contador global fica em `llm_usage`, incrementado por `public.consume_llm_quota` (`security definer`, só `service_role`). A cota é consumida antes da chamada e não é devolvida em falha.
 - Sem fallback de LLM nem Gemini (D6).
+
+## Testes ponta a ponta (T21f)
+
+Os testes em `tests/e2e/` (Playwright) ligam as partes só em ambiente local: navegador, front em modo de desenvolvimento, um gateway local em Deno e o Supabase local com o `seed.sql`.
+
+```text
+Chromium (Playwright) --> front (vite dev, 127.0.0.1:5173)
+        |
+        +--> gateway Deno (127.0.0.1:54331)
+               |-- /functions/v1/agent, /functions/v1/catalog --> handlers reais, MOCK_LLM=true
+               `-- demais caminhos (REST, Auth) ---------------> Supabase local (54321)
+```
+
+O gateway existe porque `supabase functions serve` não roda no ambiente de desenvolvimento usado (ver `docs/tarefas/T21f.md`). Ele não altera nenhum handler.
