@@ -5,6 +5,8 @@ import type { SnapshotFreshness } from "./freshness.ts";
 export type { LogEntry, UserStore };
 
 export interface CatalogAssetRow {
+  // assets.id (uuid): o navegador usa para gravar a carteira (portfolio_items.asset_id).
+  id: string;
   symbol: string;
   asset_class: string;
   name: string | null;
@@ -61,6 +63,7 @@ export interface CatalogFailure {
 export interface CatalogResponse {
   universe_version: string | null;
   assets: {
+    id: string;
     asset_id: string;
     name: string | null;
     reference_url: string | null;

@@ -226,6 +226,9 @@ export function readPayload(raw: unknown, contentVersion?: unknown): AnswerPaylo
 // --- GET /catalog ---
 
 export interface CatalogAsset {
+  // uuid de assets.id (campo aditivo do backend da P-21). Opcional aqui: ausente ou malformado
+  // vira undefined, e só a carteira o exige.
+  id?: string
   asset_id: string
   name: string
   reference_url: string | null
@@ -278,9 +281,12 @@ function readStatusCounts(raw: unknown): Record<string, number> | null {
 
 const isUnit = (v: unknown): v is Unit => v === 'BRL' || v === 'ratio' || v === 'percent'
 
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function readCatalogAsset(raw: unknown): CatalogAsset | null {
   if (!isObject(raw) || !isString(raw.asset_id) || !isString(raw.name) || !isStringOrNull(raw.reference_url)) return null
-  return { asset_id: raw.asset_id, name: raw.name, reference_url: raw.reference_url ?? null }
+  const id = isString(raw.id) && UUID.test(raw.id) ? raw.id.toLowerCase() : undefined
+  return { id, asset_id: raw.asset_id, name: raw.name, reference_url: raw.reference_url ?? null }
 }
 
 function readCatalogMetric(raw: unknown): CatalogMetric | null {

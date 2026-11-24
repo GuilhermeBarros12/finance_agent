@@ -3,12 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { authorizationKey } from '@/features/auth/hooks/useAuthorization'
 import { supabase } from '@/lib/supabase'
 import {
-  chatConfig,
   fetchCatalog,
   fetchConversation,
   fetchMessagesPage,
   newRequestId,
-  postAgent,
+  postAgentWithRetry,
   type AgentRequest,
   type ChatMessage,
 } from './api'
@@ -60,15 +59,6 @@ export type SendState =
   | { kind: 'error'; view: AgentErrorView; request: AgentRequest }
   | { kind: 'done' }
 
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-  })
-
 // Envio para POST /agent.
 // request_id: reutilizado quando a MESMA pergunta (mesmo texto e mesma seleção) é reenviada
 // depois de uma falha sem resposta conclusiva (rede, tempo esgotado, 202, 5xx). É novo quando
@@ -114,15 +104,8 @@ export function useAgentSend(userId: string, conversationId: string, onCompleted
         return next
       }
       try {
-        let outcome = await postAgent(requestId, conversationId, request, signal)
-        for (let attempt = 1; outcome.kind === 'processing' && attempt < chatConfig.processingMaxAttempts; attempt++) {
-          if (signal.aborted) return null
-          setState({ kind: 'waiting' })
-          await sleep(chatConfig.processingPauseMs, signal)
-          if (signal.aborted) return null
-          outcome = await postAgent(requestId, conversationId, request, signal)
-        }
-        if (signal.aborted) return null
+        const outcome = await postAgentWithRetry(requestId, conversationId, request, signal, () => setState({ kind: 'waiting' }))
+        if (outcome === null) return null
         switch (outcome.kind) {
           case 'completed':
             idRef.current = null

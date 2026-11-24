@@ -147,6 +147,11 @@ Deno.test({
           const ids = b.assets.map((a: { asset_id: string }) => a.asset_id);
           assertEquals(ids, [...ids].sort());
           for (const a of b.assets) {
+            // assets.id do seed (a0000000-...-00000000000N), em minúsculas.
+            assert(
+              /^a0000000-0000-4000-8000-00000000000[12]$/.test(a.id),
+              `id inesperado: ${a.id}`,
+            );
             assert(
               a.reference_url === null ||
                 a.reference_url ===

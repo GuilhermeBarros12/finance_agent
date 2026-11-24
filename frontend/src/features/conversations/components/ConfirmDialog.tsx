@@ -7,6 +7,7 @@ interface ConfirmDialogProps {
   description: string
   confirmLabel: string
   pending?: boolean
+  pendingLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -17,7 +18,7 @@ const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tab
 // Tab não escapa para a página atrás.
 // Diálogo de confirmação destrutiva. Foco inicial em "Cancelar" (o lado seguro),
 // Tab fica dentro do diálogo, Esc cancela e o foco volta a quem abriu.
-export function ConfirmDialog({ title, description, confirmLabel, pending, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, description, confirmLabel, pending, pendingLabel = 'Excluindo...', onConfirm, onCancel }: ConfirmDialogProps) {
   const titleId = useId()
   const descId = useId()
   const ref = useRef<HTMLDivElement>(null)
@@ -78,7 +79,7 @@ export function ConfirmDialog({ title, description, confirmLabel, pending, onCon
             className="border-2 border-carmim bg-carmim text-papel"
           >
             <Trash2 aria-hidden="true" className="size-5" />
-            {pending ? 'Excluindo...' : confirmLabel}
+            {pending ? pendingLabel : confirmLabel}
           </Button>
         </div>
       </div>

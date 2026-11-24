@@ -91,13 +91,18 @@ export function seedPayload(): Record<string, unknown> {
   }
 }
 
+// uuid sintéticos de assets.id (o seed local usa o mesmo padrão a0000000-...).
+export const DEMO3_UUID = 'a0000000-0000-4000-8000-000000000001'
+export const TEST4_UUID = 'a0000000-0000-4000-8000-000000000002'
+export const ONEA3_UUID = 'a0000000-0000-4000-8000-000000000003'
+
 export function catalogBody(snapshot: Record<string, unknown> | null = defaultSnapshot()): Record<string, unknown> {
   return {
     universe_version: snapshot ? 'seed-1' : null,
     assets: [
-      { asset_id: 'DEMO3', name: 'Demo S.A. (fictícia)', reference_url: 'https://statusinvest.com.br/acoes/demo3' },
-      { asset_id: 'TEST4', name: 'Teste S.A. (fictícia)', reference_url: 'https://statusinvest.com.br/acoes/test4' },
-      { asset_id: 'ONEA3', name: 'Uma Fonte S.A. (fictícia)', reference_url: null },
+      { id: DEMO3_UUID, asset_id: 'DEMO3', name: 'Demo S.A. (fictícia)', reference_url: 'https://statusinvest.com.br/acoes/demo3' },
+      { id: TEST4_UUID, asset_id: 'TEST4', name: 'Teste S.A. (fictícia)', reference_url: 'https://statusinvest.com.br/acoes/test4' },
+      { id: ONEA3_UUID, asset_id: 'ONEA3', name: 'Uma Fonte S.A. (fictícia)', reference_url: null },
     ],
     metrics: [
       { metric: 'quote_price', label: 'Cotação', unit: 'BRL' },

@@ -5,7 +5,7 @@ import { vi } from 'vitest'
 
 type Row = Record<string, unknown>
 type Op = 'select' | 'insert' | 'update' | 'delete'
-type Result = { data: unknown; error: { message: string } | null }
+type Result = { data: unknown; error: { message: string; code?: string } | null }
 type Listener = (event: string, session: unknown) => void
 
 export interface FakeSession {
@@ -27,6 +27,7 @@ export function createFake() {
     session: null as FakeSession | null,
     tables: { conversations: [] as Row[], allowed_users: [] as Row[], messages: [] as Row[], portfolio_items: [] as Row[] } as Record<string, Row[]>,
     errors: {} as Record<string, string | undefined>,
+    errorCodes: {} as Record<string, string | undefined>, // código SQL do erro forçado (ex.: 23503)
     gate: null as Promise<void> | null, // segura as escritas
     readGate: null as Promise<void> | null, // segura as leituras de conversations
     messagesGate: null as Promise<void> | null, // segura as leituras de messages
@@ -108,7 +109,7 @@ export function createFake() {
       if (this.op === 'select' && this.table === 'conversations' && state.readGate) await state.readGate
       if (this.op === 'select' && this.table === 'messages' && state.messagesGate) await state.messagesGate
       const failure = state.errors[`${this.table}.${this.op}`]
-      if (failure) return { data: null, error: { message: failure } }
+      if (failure) return { data: null, error: { message: failure, code: state.errorCodes[`${this.table}.${this.op}`] } }
       const uid = state.session?.user.id
       const rows = state.tables[this.table] ?? []
       // is_allowed_user() nas políticas de conversations: revogado não vê nem escreve nada.
@@ -119,6 +120,17 @@ export function createFake() {
       if (this.op === 'insert') {
         if (denied || this.payload.user_id !== uid) {
           return { data: null, error: { message: 'new row violates row-level security policy' } }
+        }
+        if (this.table === 'portfolio_items') {
+          // Grant de coluna: só (user_id, asset_id). Outra coluna é recusada pelo banco.
+          const extra = Object.keys(this.payload).filter((k) => k !== 'user_id' && k !== 'asset_id')
+          if (extra.length > 0) return { data: null, error: { message: 'permission denied for table portfolio_items', code: '42501' } }
+          if (rows.some((r) => r.user_id === uid && r.asset_id === this.payload.asset_id)) {
+            return { data: null, error: { message: 'duplicate key value violates unique constraint', code: '23505' } }
+          }
+          const item: Row = { id: `p-${++state.seq}`, created_at: tick(), ...this.payload }
+          rows.push(item)
+          return { data: this.returning ? [item] : null, error: null }
         }
         const row: Row = { id: `c-${++state.seq}`, title: 'Nova conversa', created_at: tick(), updated_at: tick(), ...this.payload }
         rows.push(row)
@@ -204,6 +216,7 @@ export function createFake() {
       state.session = null
       state.tables = { conversations: [], allowed_users: [], messages: [], portfolio_items: [] }
       state.errors = {}
+      state.errorCodes = {}
       state.gate = null
       state.readGate = null
       state.messagesGate = null

@@ -7,7 +7,7 @@ import { ChatPage } from '@/features/chat/components/ChatPage'
 import { ConversationsPage } from '@/features/conversations/components/ConversationsPage'
 import { DataStatusPage } from '@/features/data-status/components/DataStatusPage'
 import { LegalPage } from '@/features/legal/components/LegalPage'
-import { Placeholder } from './Placeholder'
+import { PortfolioPage } from '@/features/portfolio/components/PortfolioPage'
 
 export function AppRoutes() {
   return (
@@ -19,7 +19,7 @@ export function AppRoutes() {
           <Route element={<AppLayout />}>
             <Route index element={<ConversationsPage />} />
             <Route path="conversas/:id" element={<ChatPage />} />
-            <Route path="carteira" element={<Placeholder titulo="Carteira" descricao="A carteira chega na tarefa T21d." />} />
+            <Route path="carteira" element={<PortfolioPage />} />
             <Route path="dados" element={<DataStatusPage />} />
           </Route>
         </Route>
