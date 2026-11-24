@@ -42,6 +42,15 @@ export async function createConversation(userId: string, title: string = DEFAULT
   if (error) throw error
 }
 
+// Como `createConversation`, mas devolve o id da conversa criada (a carteira navega até ela).
+export async function createConversationWithId(userId: string, title: string): Promise<string> {
+  const { data, error } = await supabase.from('conversations').insert({ user_id: userId, title }).select('id')
+  if (error) throw error
+  const id = data?.[0]?.id
+  if (typeof id !== 'string') throw new Error('Conversa criada sem identificador.')
+  return id
+}
+
 export async function renameConversation(id: string, title: string): Promise<void> {
   const { data, error } = await supabase.from('conversations').update({ title }).eq('id', id).select('id')
   if (error) throw error

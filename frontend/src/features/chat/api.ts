@@ -155,6 +155,36 @@ export async function postAgent(
   }
 }
 
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+
+// Uma operação com o MESMO request_id: repete enquanto o servidor responde 202 (ainda
+// processando), até `processingMaxAttempts`, com pausa entre as tentativas. `onWaiting` é
+// chamado antes de cada pausa. Usado pelo chat e pela carteira.
+export async function postAgentWithRetry(
+  requestId: string,
+  conversationId: string,
+  request: AgentRequest,
+  signal: AbortSignal,
+  onWaiting: () => void = () => undefined,
+): Promise<AgentOutcome | null> {
+  let outcome = await postAgent(requestId, conversationId, request, signal)
+  for (let attempt = 1; outcome.kind === 'processing' && attempt < chatConfig.processingMaxAttempts; attempt++) {
+    if (signal.aborted) return null
+    onWaiting()
+    await sleep(chatConfig.processingPauseMs, signal)
+    if (signal.aborted) return null
+    outcome = await postAgent(requestId, conversationId, request, signal)
+  }
+  return signal.aborted ? null : outcome
+}
+
 export async function fetchCatalog(): Promise<Catalog> {
   const token = await accessToken()
   if (!token) throw new CatalogError(401)
