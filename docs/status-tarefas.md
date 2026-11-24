@@ -36,16 +36,16 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T17 | Experimento de calibragem das tolerâncias | T16 | fora da leva | |
 | T18 | Edge Function do agente (modo determinístico) | T06, T08 | concluída | [#19](https://github.com/GuilhermeBarros12/finance_agent/pull/19) |
 | T18b | Edge Function de catálogo e estado dos dados | T18 | concluída | [#20](https://github.com/GuilhermeBarros12/finance_agent/pull/20) |
-| T19 | Classificador de intenção com LLM | T18 | pendente | |
+| T19 | Classificador de intenção com LLM | T18 | concluída | [#22](https://github.com/GuilhermeBarros12/finance_agent/pull/22) |
 | T20 | Avaliação dos modelos | T19 | fora da leva | |
 | T21a | Fundação do front e guia de design | T05 | concluída | [#12](https://github.com/GuilhermeBarros12/finance_agent/pull/12) |
-| T21b | Login e conversas | T21a, T08 | pendente | |
-| T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | pendente | |
-| T21d | Carteira | T21c | pendente | |
-| T21e | Estado dos dados, exportação e aviso legal | T21c | pendente | |
-| T21f | Testes ponta a ponta e capturas de tela | T19, T21d, T21e | pendente | |
+| T21b | Login e conversas | T21a, T08 | concluída | [#23](https://github.com/GuilhermeBarros12/finance_agent/pull/23) |
+| T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | concluída | [#25](https://github.com/GuilhermeBarros12/finance_agent/pull/25) |
+| T21d | Carteira | T21c | concluída | [#27](https://github.com/GuilhermeBarros12/finance_agent/pull/27) |
+| T21e | Estado dos dados, exportação e aviso legal | T21c | concluída | [#26](https://github.com/GuilhermeBarros12/finance_agent/pull/26) |
+| T21f | Testes ponta a ponta e capturas de tela | T19, T21d, T21e | concluída | [#28](https://github.com/GuilhermeBarros12/finance_agent/pull/28) |
 | T22a | Criar o projeto Supabase hospedado | T08, T09 | fora da leva | |
 | T22b | Publicar funções e frontend | T19, T21f, T22a | fora da leva | |
 | T23 | Exportação das conversas | — | absorvida pela T21e | |
 | T24 | Conferência manual de aceite | T17, T22b | fora da leva | |
-| T25 | Relatório final e pull request para `main` | todas as autônomas | pendente | |
+| T25 | Relatório final e pull request para `main` | todas as autônomas | em revisão (PR #24 aberto, sem merge) | |

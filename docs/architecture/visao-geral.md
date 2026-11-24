@@ -1,6 +1,6 @@
 # Visão geral da arquitetura
 
-Estado após a T18 (banco, publicação e função do agente). As demais partes entram nas tarefas seguintes.
+Estado após a T19 (banco, publicação, função do agente e classificador de intenção). As demais partes entram nas tarefas seguintes.
 
 ```text
 Coletor (Python)  --publica-->  Postgres (Supabase)  <--lê--  Edge Function  <--JWT--  Frontend (React)
@@ -39,9 +39,44 @@ Navegador --JWT--> agent (Edge Function, Deno)
 ```
 
 - Código em `supabase/functions/agent/`: `handler.ts` (fluxo do README 9.1), `request.ts` (Zod estrito e hash do corpo), `idempotency.ts` (reserva em `request_runs`), `evidence.ts` (payload versão 1 e pacote de evidências), `store.ts` (único módulo que fala com o Supabase), `index.ts` (liga o ambiente). O handler recebe tudo por injeção (`AgentDeps`: clientes, relógio, hash), por isso os testes rodam em memória na CI.
-- Sem LLM nesta tarefa: o modo é `deterministic`, não há chamada de rede além do banco, e `MOCK_LLM` nem é lido. A carteira (`portfolio_items`) não é lida nem enviada a ninguém. A T19 acrescenta o classificador de intenção antes da resolução de ativos.
+- Na T18 não havia LLM. A carteira (`portfolio_items`) não é lida nem enviada a ninguém. O classificador da T19 está na seção seguinte.
 - Ordem: método, JWT (401), `allowed_users` (403), corpo (400), idempotência (409/202/200), conversa (404), ativos (422), snapshot (503), evidências, gravação das duas mensagens num único `INSERT` e conclusão da reserva com a resposta. Nada fica numa transação aberta entre passos.
 - `verify_jwt = false` em `supabase/config.toml` (`[functions.agent]`): o JWT é conferido no código, e o 401 sai no formato de erro do projeto. A autorização não depende disso: sem passar por `auth.getUser` e por `allowed_users`, o cliente administrativo nunca é usado.
 - Contrato HTTP em `docs/api.md`.
 - **`_shared/` (T18b).** A autenticação (`auth.ts`: `bearer`, `authenticateWith`, `isAllowedUserWith`), os erros (`errors.ts`), o CORS (`cors.ts`) e a leitura do ambiente (`env.ts`) saíram de `agent/` para `supabase/functions/_shared/`. `agent/errors.ts` e `agent/cors.ts` só reexportam; o comportamento do `agent` não mudou.
 - **`GET /functions/v1/catalog` (T18b).** `supabase/functions/catalog/`: mesma ordem de segurança do agente (método, JWT 401, `allowed_users` 403) e só então o cliente `service_role` lê `assets`, `data_sources`, `active_snapshot`, `snapshots` e a contagem de `field_validations`. Só leitura, sem LLM, sem carteira. O frescor é calculado no servidor (`freshness.ts`, mesma regra de dias úteis do motor da T14) contra o relógio injetado; `failures` passa por `sanitize.ts`; o link de referência é montado em `reference.ts`.
+
+## Classificador de intenção (T19)
+
+```text
+POST /agent sem selection
+  -> (auth, allowed_users, corpo, reserva, conversa do dono)     [como na T18]
+  -> listStockSymbols()                  universo = ações de `assets`
+  -> llm.classify(message, universe)
+       mock?      -> classificação fixa (MOCK_LLM=true só com APP_ENV=local|test)
+       sem chave? -> LLM_DISABLED
+       groq:  consume_llm_quota(RPC, atômica)  --nega--> LLM_QUOTA_EXHAUSTED (sem chamar)
+              fetch injetável + AbortController + tamanho máximo, até 2 chamadas
+              Zod estrito (intent, asset_ids do universo, metrics do enum)
+  -> ok:    segue o fluxo determinístico da T18 com a seleção validada
+  -> falha: 200 needs_selection + aviso com código; nada em `messages`; run `succeeded`
+```
+
+- Código em `supabase/functions/_shared/llm/`: `config.ts` (ambiente e recusa de mock hospedado), `schema.ts` (Zod e prompt), `groq.ts` (`classifyIntent`, retry, timeout), `service.ts` (liga tudo, entrega `LlmService` ao handler), `fakes.ts` (dublês de teste). `agent/store.ts` ganhou `SupabaseQuotaStore` (RPC) e `listStockSymbols`.
+- O LLM só devolve intenção, tickers do universo e métricas do enum. Não escreve texto para o usuário, não vê valores, snapshot, carteira, conversa nem identificadores do usuário, e nunca escolhe lado em divergência. Os números vêm do banco, como na T18.
+- O contador global fica em `llm_usage`, incrementado por `public.consume_llm_quota` (`security definer`, só `service_role`). A cota é consumida antes da chamada e não é devolvida em falha.
+- Sem fallback de LLM nem Gemini (D6).
+
+## Testes ponta a ponta (T21f)
+
+Os testes em `tests/e2e/` (Playwright) ligam as partes só em ambiente local: navegador, front em modo de desenvolvimento, um gateway local em Deno e o Supabase local com o `seed.sql`.
+
+```text
+Chromium (Playwright) --> front (vite dev, 127.0.0.1:5173)
+        |
+        +--> gateway Deno (127.0.0.1:54331)
+               |-- /functions/v1/agent, /functions/v1/catalog --> handlers reais, MOCK_LLM=true
+               `-- demais caminhos (REST, Auth) ---------------> Supabase local (54321)
+```
+
+O gateway existe porque `supabase functions serve` não roda no ambiente de desenvolvimento usado (ver `docs/tarefas/T21f.md`). Ele não altera nenhum handler.

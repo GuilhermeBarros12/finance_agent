@@ -43,6 +43,18 @@ function json(status: number, body: unknown, extra = {}): Response {
 // Falha dado inconsistente do manifesto: erro explícito (500), nunca lista vazia.
 class InconsistentDataError extends Error {}
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Identificador malformado vindo do banco é dado inconsistente (500), nunca valor
+// inventado nem omitido.
+function validUuid(value: unknown): string {
+  if (typeof value !== "string" || !UUID_RE.test(value)) {
+    throw new InconsistentDataError("id de ativo malformado");
+  }
+  return value.toLowerCase();
+}
+
 export function summarizeFailures(raw: unknown): CatalogFailure[] {
   if (!Array.isArray(raw)) {
     throw new InconsistentDataError("manifesto sem lista de falhas");
@@ -116,6 +128,7 @@ export async function handleCatalogRequest(
     const assets = [...assetRows]
       .sort((a, b) => a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0)
       .map((a) => ({
+        id: validUuid(a.id),
         asset_id: a.symbol,
         name: a.name,
         reference_url: buildReferenceUrl(baseUrl, a.asset_class, a.symbol),

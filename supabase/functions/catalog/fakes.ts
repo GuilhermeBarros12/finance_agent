@@ -54,8 +54,18 @@ export const SNAPSHOT_SEED: CatalogSnapshotRow = {
 };
 
 export const ASSETS: CatalogAssetRow[] = [
-  { symbol: "TEST4", asset_class: "stock", name: "Teste S.A. (fictícia)" },
-  { symbol: "DEMO3", asset_class: "stock", name: "Demo S.A. (fictícia)" },
+  {
+    id: "a0000000-0000-4000-8000-000000000002",
+    symbol: "TEST4",
+    asset_class: "stock",
+    name: "Teste S.A. (fictícia)",
+  },
+  {
+    id: "a0000000-0000-4000-8000-000000000001",
+    symbol: "DEMO3",
+    asset_class: "stock",
+    name: "Demo S.A. (fictícia)",
+  },
 ];
 
 export class FakeCatalogStore implements CatalogStore {

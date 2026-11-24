@@ -26,14 +26,27 @@ import type {
   ValidationRow,
 } from "./types.ts";
 import { type EnvConfig, readEnv } from "../_shared/env.ts";
+import type { LlmConfig } from "../_shared/llm/config.ts";
+import { createLlmService } from "../_shared/llm/service.ts";
 import { sha256Hex } from "./request.ts";
 
 export { type EnvConfig, readEnv };
 
-export function createAgentDeps(env: EnvConfig): AgentDeps {
+export function createAgentDeps(
+  env: EnvConfig,
+  llmConfig: LlmConfig,
+  // O fetch real só entra aqui, no ponto de entrada; os testes injetam um falso.
+  llmFetch: typeof fetch = fetch,
+): AgentDeps {
   const anon: Client = createClient(env.url, env.anonKey, NO_SESSION);
   const admin: Client = createClient(env.url, env.serviceKey, NO_SESSION);
+  const quota = new SupabaseQuotaStore(admin);
   return {
+    llm: createLlmService({
+      config: llmConfig,
+      fetch: llmFetch,
+      consumeQuota: (provider, limit) => quota.consume(provider, limit),
+    }),
     authenticate: (jwt) => authenticateWith(anon, jwt),
     userStore: (jwt) => new SupabaseUserStore(userClient(env, jwt)),
     system: new SupabaseSystemStore(admin),
@@ -70,6 +83,24 @@ export class SupabaseUserStore implements UserStore {
       .maybeSingle();
     if (error) throw new Error(`conversations: ${error.code ?? "erro"}`);
     return data != null;
+  }
+}
+
+// Contador global de chamadas ao LLM (D16). Atômico no banco: RPC `consume_llm_quota`,
+// executável só por service_role. A cota é consumida antes da chamada e não é devolvida.
+export class SupabaseQuotaStore {
+  constructor(private readonly db: Client) {}
+
+  async consume(provider: string, limit: number): Promise<boolean> {
+    const { data, error } = await this.db.rpc("consume_llm_quota", {
+      p_provider: provider,
+      p_limit: limit,
+    });
+    if (error) throw new Error(`consume_llm_quota: ${error.code ?? "erro"}`);
+    if (typeof data !== "boolean") {
+      throw new Error("consume_llm_quota: retorno");
+    }
+    return data;
   }
 }
 
@@ -215,6 +246,16 @@ const OBSERVATION_COLUMNS = "id,snapshot_id,asset_id,metric,raw_value," +
 
 export class SupabaseMarketStore implements MarketStore {
   constructor(private readonly db: Client) {}
+
+  async listStockSymbols(): Promise<string[]> {
+    const { data, error } = await this.db
+      .from("assets")
+      .select("symbol")
+      .eq("asset_class", "stock")
+      .order("symbol");
+    if (error) throw new Error(`assets: ${error.code ?? "erro"}`);
+    return (data ?? []).map((r: { symbol: string }) => r.symbol);
+  }
 
   async findAssets(symbols: string[]): Promise<AssetRow[]> {
     const { data, error } = await this.db
