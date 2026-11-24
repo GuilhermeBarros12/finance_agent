@@ -1,6 +1,7 @@
 import { BookOpen, Briefcase, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
+import { LegalFooter } from '@/features/legal/components/LegalFooter'
 import { SignOutButton } from '@/features/auth/components/SignOutButton'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from './ThemeToggle'
@@ -21,7 +22,7 @@ function linkClass({ isActive }: { isActive: boolean }) {
 export function AppLayout() {
   const [signOutError, setSignOutError] = useState<string | null>(null)
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[14rem_1fr]">
+    <div className="min-h-dvh md:grid md:grid-cols-[14rem_minmax(0,1fr)]">
       <aside className="hidden border-r border-borda bg-superficie p-4 md:block">
         <p className="font-serif text-subtitulo font-semibold">Agente de Investimentos</p>
         <nav aria-label="Principal" className="mt-6 flex flex-col gap-1">
@@ -55,11 +56,7 @@ export function AppLayout() {
         <main className="flex-1 p-4 md:p-8">
           <Outlet />
         </main>
-        <footer className="border-t border-borda px-4 py-3 text-nota text-tinta-suave">
-          <Link to="/aviso-legal" className="inline-flex min-h-11 items-center underline">
-            Aviso legal
-          </Link>
-        </footer>
+        <LegalFooter />
       </div>
       <nav
         aria-label="Principal"

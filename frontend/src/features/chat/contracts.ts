@@ -241,6 +241,15 @@ export interface CatalogSnapshot {
   freshness: FreshnessStatus
   assets_total: number
   assets_updated: number
+  // null = ausente ou ilegível no catálogo. A tela de dados mostra "não disponível", nunca
+  // uma lista vazia nem zeros no lugar de um dado que não chegou.
+  failures: CatalogFailure[] | null
+  status_counts: Record<string, number> | null
+}
+export interface CatalogFailure {
+  asset_id: string
+  source_id: string
+  reason: string
 }
 export interface Catalog {
   // Pode ser null (sem snapshot): nada depende dele na tela.
@@ -248,6 +257,23 @@ export interface Catalog {
   assets: CatalogAsset[]
   metrics: CatalogMetric[]
   snapshot: CatalogSnapshot | null
+}
+
+function readFailure(raw: unknown): CatalogFailure | null {
+  if (!isObject(raw) || !isString(raw.asset_id) || !isString(raw.source_id) || !isString(raw.reason)) return null
+  return { asset_id: raw.asset_id, source_id: raw.source_id, reason: raw.reason }
+}
+
+// Chaves novas são toleradas (a tela as mostra como "estado não reconhecido"); um valor que
+// não é contagem inteira torna o conjunto todo ilegível.
+function readStatusCounts(raw: unknown): Record<string, number> | null {
+  if (!isObject(raw)) return null
+  const out: Record<string, number> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+    out[key] = value
+  }
+  return out
 }
 
 const isUnit = (v: unknown): v is Unit => v === 'BRL' || v === 'ratio' || v === 'percent'
@@ -287,6 +313,8 @@ export function readCatalog(raw: unknown): Catalog | null {
       freshness: s.freshness as FreshnessStatus,
       assets_total: s.assets_total,
       assets_updated: s.assets_updated,
+      failures: s.failures === undefined ? null : readList(s.failures, readFailure),
+      status_counts: readStatusCounts(s.status_counts),
     }
   }
   return { universe_version: raw.universe_version ?? null, assets, metrics, snapshot }

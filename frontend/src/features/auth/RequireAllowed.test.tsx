@@ -5,7 +5,11 @@ import { renderApp } from '@/test/renderApp'
 
 vi.mock('@/lib/supabase', async () => ({ supabase: (await import('@/test/fakeSupabase')).fake.client }))
 
-beforeEach(() => fake.reset())
+beforeEach(() => {
+  fake.reset()
+  // /dados e a conversa leem o catálogo por fetch: nunca rede de verdade nos testes.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })))
+})
 
 const PRIVATE = [
   { path: '/', heading: 'Conversas', go: 'Carteira' },

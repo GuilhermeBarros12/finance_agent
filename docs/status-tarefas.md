@@ -42,10 +42,10 @@ Quem muda o estado: o orquestrador marca `em andamento`, `concluída` e `bloquea
 | T21b | Login e conversas | T21a, T08 | concluída | [#23](https://github.com/GuilhermeBarros12/finance_agent/pull/23) |
 | T21c | Chat, tabela de indicadores e seletor manual | T21b, T18, T18b | concluída | [#25](https://github.com/GuilhermeBarros12/finance_agent/pull/25) |
 | T21d | Carteira | T21c | em andamento | |
-| T21e | Estado dos dados, exportação e aviso legal | T21c | pendente | |
+| T21e | Estado dos dados, exportação e aviso legal | T21c | concluída | [#26](https://github.com/GuilhermeBarros12/finance_agent/pull/26) |
 | T21f | Testes ponta a ponta e capturas de tela | T19, T21d, T21e | pendente | |
 | T22a | Criar o projeto Supabase hospedado | T08, T09 | fora da leva | |
 | T22b | Publicar funções e frontend | T19, T21f, T22a | fora da leva | |
 | T23 | Exportação das conversas | — | absorvida pela T21e | |
 | T24 | Conferência manual de aceite | T17, T22b | fora da leva | |
-| T25 | Relatório final e pull request para `main` | todas as autônomas | em revisão (PR #10 aberto, sem merge) | |
+| T25 | Relatório final e pull request para `main` | todas as autônomas | em revisão (PR #24 aberto, sem merge) | |
