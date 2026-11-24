@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { catalogBody } from '@/features/chat/fixtures'
 import { fake } from '@/test/fakeSupabase'
 import { renderApp } from '@/test/renderApp'
 
@@ -7,8 +8,10 @@ vi.mock('@/lib/supabase', async () => ({ supabase: (await import('@/test/fakeSup
 
 beforeEach(() => {
   fake.reset()
-  // /dados e a conversa leem o catálogo por fetch: nunca rede de verdade nos testes.
-  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })))
+  // /dados, a conversa e a carteira leem o catálogo por fetch: nunca rede de verdade nos testes.
+  // O catálogo é válido para a tela de destino não mostrar o próprio alerta de erro antes do
+  // alerta de acesso que estes testes procuram.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(catalogBody()), { status: 200, headers: { 'Content-Type': 'application/json' } })))
 })
 
 const PRIVATE = [

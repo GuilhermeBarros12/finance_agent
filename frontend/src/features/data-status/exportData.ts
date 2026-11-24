@@ -1,6 +1,7 @@
 // Exportação dos dados do usuário (conversas, mensagens e carteira). Tudo acontece no
 // navegador: lê do banco com o JWT do usuário (a RLS filtra) e monta o arquivo. Nenhuma
 // chamada de rede além dessas leituras; nada é enviado a servidor.
+import { fetchCatalog } from '@/features/chat/api'
 import { supabase } from '@/lib/supabase'
 
 export const FORMAT_VERSION = 1
@@ -95,6 +96,16 @@ export async function buildExport(onProgress: ExportProgress = () => undefined, 
   const conversations = await readAll('conversations', (n) => onProgress('conversations', n))
   const messages = await readAll('messages', (n) => onProgress('messages', n))
   const portfolio = await readAll('portfolio_items', (n) => onProgress('portfolio_items', n))
+  // O catálogo só enriquece a carteira com o símbolo. Se falhar (rede, 401, formato), a
+  // exportação segue sem ele: a carteira sai com o uuid e um aviso, nunca com símbolo inventado.
+  const symbols = new Map<string, string>()
+  let catalogOk = true
+  try {
+    const catalog = await fetchCatalog()
+    for (const asset of catalog.assets) if (asset.id) symbols.set(asset.id, asset.asset_id)
+  } catch {
+    catalogOk = false
+  }
   const at = now()
 
   const complete = conversations.complete && messages.complete && portfolio.complete
@@ -113,19 +124,34 @@ export async function buildExport(onProgress: ExportProgress = () => undefined, 
   )
   portfolio.rows.sort((a, b) => byText(a.created_at, b.created_at) || byText(a.id, b.id))
 
+  const unresolved = portfolio.rows.filter((row) => !symbols.has(String(row.asset_id).toLowerCase()))
+  const portfolioOut = portfolio.rows.map((row) => {
+    const symbol = symbols.get(String(row.asset_id).toLowerCase())
+    return symbol === undefined ? row : { ...row, symbol }
+  })
+  if (portfolio.rows.length > 0) {
+    if (!catalogOk) {
+      avisos.push('Não foi possível ler o catálogo: a carteira saiu só com o identificador interno (asset_id), sem o símbolo.')
+    } else if (unresolved.length > 0) {
+      avisos.push(
+        `${unresolved.length} ${unresolved.length === 1 ? 'item da carteira não consta' : 'itens da carteira não constam'} no catálogo: ${unresolved.length === 1 ? 'saiu' : 'saíram'} só com o identificador interno (asset_id), sem o símbolo.`,
+      )
+    }
+  }
+
   const file = {
     format_version: FORMAT_VERSION,
     exported_at: at.toISOString(),
     complete,
     notas: [
-      'A carteira traz o identificador interno de cada ação (asset_id), não o símbolo. O símbolo será acrescentado quando o catálogo passar a devolver esse identificador.',
+      'A carteira traz o identificador interno de cada ação (asset_id). O símbolo (symbol) é acrescentado quando o catálogo está disponível e conhece o identificador; sem ele, o item sai só com o identificador.',
       'Os valores financeiros dentro de messages[].payload são textos (strings), exatamente como foram gravados. Nenhum foi convertido.',
       'Este arquivo foi montado no navegador, com os dados lidos pela sua conta. Não contém e-mail, identificador da conta nem chaves.',
     ],
     avisos,
     conversations: conversations.rows,
     messages: messages.rows,
-    portfolio_items: portfolio.rows,
+    portfolio_items: portfolioOut,
   }
 
   return {

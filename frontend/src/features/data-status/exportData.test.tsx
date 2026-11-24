@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { fake } from '@/test/fakeSupabase'
 import { renderApp } from '@/test/renderApp'
-import { catalogBody, seedPayload } from '@/features/chat/fixtures'
+import { DEMO3_UUID, TEST4_UUID, catalogBody, seedPayload } from '@/features/chat/fixtures'
 import { downloadText, exportConfig, exportFileName, FORMAT_VERSION, REVOKE_DELAY_MS } from './exportData'
 
 vi.mock('@/lib/supabase', async () => ({ supabase: (await import('@/test/fakeSupabase')).fake.client }))
@@ -205,7 +205,14 @@ test('nenhuma requisição de rede além das leituras do banco, e nenhuma escrit
   const logBefore = fake.state.log.length
   fireEvent.click(screen.getByRole('button', { name: 'Exportar meus dados' }))
   await screen.findByText(/Exportação concluída/)
-  expect(fetchMock.mock.calls.length).toBe(fetchesBefore)
+  // Única chamada de rede da exportação: a LEITURA do catálogo (GET, sem corpo), que só serve
+  // para acrescentar o símbolo. Nada é enviado a servidor.
+  const extra = fetchMock.mock.calls.slice(fetchesBefore)
+  expect(extra).toHaveLength(1)
+  expect(String(extra[0][0]).endsWith('/functions/v1/catalog')).toBe(true)
+  const init = (extra[0] as unknown[])[1] as RequestInit | undefined
+  expect(init?.method).toBe('GET')
+  expect(init?.body).toBeUndefined()
   const during = fake.state.log.slice(logBefore)
   expect(during.length).toBeGreaterThan(0)
   expect(during.every((l) => l.op === 'select')).toBe(true)
@@ -276,4 +283,39 @@ test('a URL é revogada depois do clique, não antes', () => {
 test('o lembrete de backup semanal aparece na tela de exportação', async () => {
   renderApp('/dados')
   expect(await screen.findByText(/Guarde uma cópia por semana, fora do repositório/)).toBeTruthy()
+})
+
+test('carteira com símbolo quando o catálogo conhece o uuid; o que ele não conhece sai só com o uuid e um aviso', async () => {
+  fake.addPortfolioItem(DEMO3_UUID)
+  fake.addPortfolioItem(TEST4_UUID)
+  fake.addPortfolioItem('99999999-9999-4999-8999-999999999999')
+  await openAndExport()
+  expect(await screen.findByText(/Exportação concluída/)).toBeTruthy()
+  const file = JSON.parse(await readBlob(blobs[0]))
+  const bySymbol = (file.portfolio_items as { asset_id: string; symbol?: string }[]).map((p) => [p.asset_id, p.symbol])
+  expect(bySymbol).toContainEqual([DEMO3_UUID, 'DEMO3'])
+  expect(bySymbol).toContainEqual([TEST4_UUID, 'TEST4'])
+  expect(bySymbol).toContainEqual(['99999999-9999-4999-8999-999999999999', undefined])
+  const unknown = file.portfolio_items.find((p: { asset_id: string }) => p.asset_id.startsWith('9999'))
+  expect(Object.keys(unknown).sort()).toEqual(['asset_id', 'created_at', 'id'])
+  expect(file.avisos.join(' ')).toContain('1 item da carteira não consta no catálogo')
+  expect(file.complete).toBe(true)
+})
+
+test('falha ao ler o catálogo não impede a exportação: carteira só com uuid e aviso, nada de símbolo inventado', async () => {
+  seed()
+  fake.addPortfolioItem(DEMO3_UUID)
+  renderApp('/dados')
+  await screen.findByText('11 de 12 ativos atualizados')
+  fetchMock.mockImplementation(async () => new Response('{}', { status: 500 })) // o catálogo cai antes da exportação
+  fireEvent.click(screen.getByRole('button', { name: 'Exportar meus dados' }))
+  expect(await screen.findByText(/Exportação concluída/)).toBeTruthy()
+  expect(blobs).toHaveLength(1)
+  const file = JSON.parse(await readBlob(blobs[0]))
+  expect(file.conversations).toHaveLength(2)
+  expect(file.messages).toHaveLength(3)
+  expect(file.portfolio_items.length).toBe(3)
+  for (const item of file.portfolio_items) expect(item.symbol).toBeUndefined()
+  expect(file.avisos.join(' ')).toContain('Não foi possível ler o catálogo')
+  expect(file.complete).toBe(true)
 })

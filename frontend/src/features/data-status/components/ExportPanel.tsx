@@ -15,7 +15,7 @@ export function ExportPanel() {
       <p className="mt-2 max-w-prose text-tinta-suave">
         Baixa um arquivo JSON com as suas conversas, as mensagens (com a evidência de cada resposta) e a carteira. O arquivo
         é montado neste navegador e nada é enviado a nenhum servidor. Na carteira, cada ação sai com o identificador
-        interno, não com o símbolo.
+        interno e, quando o catálogo está disponível, com o símbolo.
       </p>
       <p className="mt-2 flex max-w-prose items-start gap-2">
         <CalendarClock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
